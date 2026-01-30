@@ -11,7 +11,7 @@ struct TreeNode {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-enum TreeKind { Group, Node }
+enum TreeKind { Group, Neuron }
 
 #[derive(Clone, Debug, PartialEq)]
 struct CtxMenu { x: f64, y: f64, kind: TreeKind, id: i64, name: String }
@@ -66,7 +66,7 @@ pub fn Explorer() -> Element {
                         // Select: nodes select-only; groups select group only
                         let mut s = store.write();
                         match kind_for_select {
-                            TreeKind::Node => s.select_only(id_for_select),
+                            TreeKind::Neuron => s.select_only(id_for_select),
                             TreeKind::Group => s.select_group_only(id_for_select),
                         }
                         ctx_menu.set(None);
@@ -77,7 +77,7 @@ pub fn Explorer() -> Element {
                         {
                             let mut s = store.write();
                             match kind_for_delete {
-                                TreeKind::Node => s.delete_node(id_for_delete),
+                                TreeKind::Neuron => s.delete_neuron(id_for_delete),
                                 TreeKind::Group => s.delete_group_recursive(id_for_delete),
                             }
                         }
@@ -108,7 +108,7 @@ fn build_tree(store: &AppStore) -> Vec<TreeNode> {
     // Nodes
     for node in store.nodes.iter() {
         buckets.entry(node.parent).or_default().push(TreeNode {
-            kind: TreeKind::Node,
+            kind: TreeKind::Neuron,
             id: node.id,
             name: node.id.to_string(),
             parent: node.parent,
@@ -119,8 +119,8 @@ fn build_tree(store: &AppStore) -> Vec<TreeNode> {
     fn sort_nodes(list: &mut Vec<TreeNode>) {
         use std::cmp::Ordering::*;
         list.sort_by(|a, b| match (&a.kind, &b.kind) {
-            (TreeKind::Group, TreeKind::Node) => Less,
-            (TreeKind::Node, TreeKind::Group) => Greater,
+            (TreeKind::Group, TreeKind::Neuron) => Less,
+            (TreeKind::Neuron, TreeKind::Group) => Greater,
             _ => a.id.cmp(&b.id),
         });
     }
@@ -196,7 +196,7 @@ fn RenderTreeNode(
                             if s.contains(&node.id) { s.remove(&node.id); } else { s.insert(node.id); }
                         }
                     } else {
-                        // Node: Ctrl/Cmd toggles, otherwise select only
+                        // Neuron: Ctrl/Cmd toggles, otherwise select only
                         if e.modifiers().ctrl() || e.modifiers().meta() {
                             store.write().toggle_selected(node.id);
                         } else {

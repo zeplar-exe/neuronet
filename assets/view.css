@@ -52,6 +52,10 @@
     color: #f6f6f6;
 }
 
+/* Explicit anchors for sidebars (we don't rely on Tailwind utility classes here) */
+.nn-sidebar-left { left: 0; }
+.nn-sidebar-right { right: 0; }
+
 .nn-toolbtn {
     background: transparent;
     color: #f6f6f6;
@@ -282,3 +286,22 @@
 .nn-tip:hover .nn-tip-bubble--left,
 .nn-tip:focus .nn-tip-bubble--left,
 .nn-tip:focus-within .nn-tip-bubble--left { transform: translate(0, -50%) translateY(0); }
+
+/* ---------------------------------------------------------
+   Properties panel styles (dark mode friendly)
+--------------------------------------------------------- */
+.nn-props { color: #f0f3f9; }
+.nn-props h3 { margin: 0 0 8px 0; font-weight: 600; font-size: 14px; color: #e7efff; }
+.nn-prop-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.nn-prop-label { font-size: 12px; color: #c9d6ff; }
+.nn-prop-input {
+    width: 100%;
+    background: rgba(255,255,255,0.06);
+    color: #f6f6f6;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px;
+    padding: 6px 8px;
+}
+.nn-prop-input[readonly] { opacity: 0.8; cursor: default; }
+.nn-prop-input::placeholder { color: rgba(255,255,255,0.45); }
+.nn-prop-input:focus { outline: none; border-color: rgba(159,192,255,0.6); box-shadow: 0 0 0 2px rgba(57,108,216,0.25); }

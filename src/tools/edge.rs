@@ -1,5 +1,5 @@
 use dioxus::prelude::*;
-use crate::state::Node;
+use crate::state::Neuron;
 use crate::tools::{Tool, ToolContext};
 
 pub struct EdgeTool {
@@ -20,7 +20,7 @@ impl Default for EdgeTool {
 }
 impl Tool for EdgeTool {
     fn name(&self) -> &'static str { "edge" }
-    fn on_node_click(&mut self, ctx: &mut ToolContext, node: &Node, evt: &MouseEvent) {
+    fn on_node_click(&mut self, ctx: &mut ToolContext, node: &Neuron, evt: &MouseEvent) {
         if self.suppress_click { self.suppress_click = false; return; }
         let mods = evt.modifiers();
         let shift = mods.shift();
@@ -49,7 +49,7 @@ impl Tool for EdgeTool {
             ctx.store.write().select_only(node.id);
         }
     }
-    fn on_node_drag_start(&mut self, ctx: &mut ToolContext, node: &Node, evt: &MouseEvent) {
+    fn on_node_drag_start(&mut self, ctx: &mut ToolContext, node: &Neuron, evt: &MouseEvent) {
         // Same drag behavior as SelectTool: allow moving currently selected or the clicked node
         let mut s = ctx.store.write();
         let selected_contains = s.selected.iter().any(|&id| id == node.id);

@@ -180,12 +180,12 @@ pub fn EditView() -> Element {
 
         // Sidebars
         {
-            let left_sidebar_class = format!("{} left-0", sidebar_base_class);
-            let right_sidebar_class = format!("{} right-0", sidebar_base_class);
+            let left_sidebar_class = format!("{} nn-sidebar-left", sidebar_base_class);
+            let right_sidebar_class = format!("{} nn-sidebar-right", sidebar_base_class);
             rsx! {
-                // Properties panel (left) – keep empty for now or future properties UI
-                aside { class: left_sidebar_class, Properties {} }
-                aside { class: right_sidebar_class, Explorer {} }
+                // Explorer on the left, Properties on the right
+                aside { class: left_sidebar_class, Explorer {} }
+                aside { class: right_sidebar_class, Properties {} }
             }
         }
 
@@ -203,9 +203,9 @@ fn ToolButton(label: String, active: bool, onclick: EventHandler<MouseEvent>) ->
 
 #[component]
 fn RenderNode(
-    node: crate::state::Node,
+    node: crate::state::Neuron,
     store: Signal<crate::state::AppStore>,
-    active_tool: Signal<Box<dyn crate::tools::Tool>>, 
+    active_tool: Signal<Box<dyn crate::tools::Tool>>,
     is_dragging: Signal<bool>,
 ) -> Element {
     let radius = 20.0;
@@ -223,14 +223,14 @@ fn RenderNode(
                 // Start node drag; prevent canvas drag-start from firing first
                 e.stop_propagation();
                 is_dragging.set(true);
-                let this_node = crate::state::Node { id: node_id, ..node_for_down.clone() };
+                let this_node = crate::state::Neuron { id: node_id, ..node_for_down.clone() };
                 let mut tool_ctx2 = ToolContext { store: store.clone() };
                 active_tool.write().on_node_drag_start(&mut tool_ctx2, &this_node, &e);
             },
             onclick: move |e| {
                 e.stop_propagation();
                 // Call tool-defined node click on the active tool instance
-                let this_node = crate::state::Node { id: node_id, ..node_for_click.clone() };
+                let this_node = crate::state::Neuron { id: node_id, ..node_for_click.clone() };
                 let mut tool_ctx2 = ToolContext { store: store.clone() };
                 active_tool.write().on_node_click(&mut tool_ctx2, &this_node, &e);
             },
@@ -324,7 +324,7 @@ fn AddPopulationModal(store: Signal<AppStore>, active_tool: Signal<Box<dyn crate
                     };
 
                     let mut s = store_signal.write();
-                    s.push_node(crate::state::Node {
+                    s.push_neuron(crate::state::Neuron {
                         id: id,
                         model: NeuronModelKind::default(),
                         position: (px, py),

@@ -1,6 +1,6 @@
 use dioxus::events::MouseEvent;
 use dioxus::prelude::*;
-use crate::state::Node;
+use crate::state::Neuron;
 use crate::tools::{Tool, ToolContext};
 
 pub struct SelectTool {
@@ -21,14 +21,14 @@ impl Tool for SelectTool {
     fn on_canvas_click(&mut self, ctx: &mut ToolContext, _evt: &MouseEvent) {
         ctx.store.write().clear_selection();
     }
-    fn on_node_click(&mut self, ctx: &mut ToolContext, node: &Node, evt: &MouseEvent) {
+    fn on_node_click(&mut self, ctx: &mut ToolContext, node: &Neuron, evt: &MouseEvent) {
         if self.suppress_click { self.suppress_click = false; return; }
         let mods = evt.modifiers();
         let multi = mods.ctrl() || mods.meta();
         if multi { ctx.store.write().toggle_selected(node.id) }
         else { ctx.store.write().select_only(node.id) }
     }
-    fn on_node_drag_start(&mut self, ctx: &mut ToolContext, node: &Node, evt: &MouseEvent) {
+    fn on_node_drag_start(&mut self, ctx: &mut ToolContext, node: &Neuron, evt: &MouseEvent) {
         let mut s = ctx.store.write();
         let selected_contains = s.selected.iter().any(|&id| id == node.id);
         let mods = evt.modifiers();

@@ -3,7 +3,7 @@ pub mod add;
 pub mod edge;
 
 use dioxus::prelude::*;
-use crate::state::{AppStore, Node, ViewType};
+use crate::state::{AppStore, Neuron, ViewType};
 use crate::tools::add::AddTool;
 use crate::tools::edge::EdgeTool;
 use crate::tools::select::SelectTool;
@@ -17,8 +17,8 @@ pub struct ToolContext {
 pub trait Tool {
     fn name(&self) -> &'static str;
     fn on_canvas_click(&mut self, _ctx: &mut ToolContext, _evt: &MouseEvent) {}
-    fn on_node_click(&mut self, _ctx: &mut ToolContext, _node: &Node, _evt: &MouseEvent) {}
-    fn on_node_drag_start(&mut self, _ctx: &mut ToolContext, _node: &Node, _evt: &MouseEvent) {}
+    fn on_node_click(&mut self, _ctx: &mut ToolContext, _node: &Neuron, _evt: &MouseEvent) {}
+    fn on_node_drag_start(&mut self, _ctx: &mut ToolContext, _node: &Neuron, _evt: &MouseEvent) {}
     fn on_drag_start(&mut self, _ctx: &mut ToolContext, _evt: &MouseEvent) {}
     fn on_drag(&mut self, _ctx: &mut ToolContext, _evt: &MouseEvent) {}
     fn on_drag_end(&mut self, _ctx: &mut ToolContext, _evt: &MouseEvent) {}
