@@ -1,0 +1,4 @@
+/* Tailwind (optional) */
+@import "tailwindcss";
+@import "main.css";
+@import "view.css";

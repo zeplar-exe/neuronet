@@ -1,0 +1,284 @@
+.nn-topbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 56px; /* h-14 */
+    background: rgba(26, 26, 26, 0.95);
+    display: flex;
+    align-items: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    z-index: 40;
+    color: #f6f6f6;
+    gap: 16px;
+    padding: 0 16px;
+}
+
+.nn-canvas {
+    position: absolute;
+    top: 56px; /* top-14 */
+    left: 220px;
+    right: 220px;
+    bottom: 0;
+    overflow: hidden;
+    background: transparent;
+}
+
+.nn-toolbar {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 12px; /* bottom-3 */
+    display: flex;
+    gap: 8px; /* gap-2 */
+    padding: 8px 12px; /* px-3 py-2 */
+    background: rgba(26, 26, 26, 0.95);
+    border-radius: 10px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+    z-index: 50;
+    color: #f6f6f6;
+}
+
+.nn-sidebar {
+    position: fixed;
+    top: 56px; /* top-14 */
+    bottom: 0;
+    width: 220px;
+    background: rgba(26, 26, 26, 0.98);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    z-index: 30;
+    padding: 12px; /* p-3 */
+    overflow: auto;
+    color: #f6f6f6;
+}
+
+.nn-toolbtn {
+    background: transparent;
+    color: #f6f6f6;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 8px 12px; /* px-3 py-2 */
+    border-radius: 6px; /* rounded-md */
+    cursor: pointer;
+}
+.nn-toolbtn.nn-toolbtn--active {
+    background: #396cd8;
+    color: #fff;
+    border: 1px solid #2f5fc0;
+}
+
+.nn-select-none {
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.nn-circle {
+    border-radius: 9999px; /* rounded-full */
+    border: 1px solid #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0077ff;
+    color: #fff;
+    font-size: 10px;
+}
+.nn-circle.nn-circle--selected {
+    background: #396cd8;
+}
+
+.nn-explorer {
+    color: #f6f6f6;
+}
+.nn-explorer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+.nn-refresh-btn {
+    padding: 4px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    color: #f6f6f6;
+    background: transparent;
+    cursor: pointer;
+}
+
+.nn-pointer { cursor: pointer; }
+.nn-default { cursor: default; }
+
+/* AddTool selection box */
+.nn-selectbox {
+    border: 1px dashed #66a3ff;
+    background: rgba(57, 108, 216, 0.15);
+    pointer-events: none;
+}
+
+/* Modal styles */
+.nn-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 60;
+}
+.nn-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: 320px;
+    max-width: 480px;
+    background: rgba(26,26,26,0.98);
+    color: #f6f6f6;
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+    padding: 16px;
+    z-index: 70;
+}
+
+/* Simple context menu for Explorer */
+.nn-menu {
+    position: absolute;
+    min-width: 160px;
+    background: rgba(26,26,26,0.98);
+    color: #f6f6f6;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    z-index: 80;
+    padding: 4px;
+}
+.nn-menu-item {
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+.nn-menu-item:hover {
+    background: rgba(57,108,216,0.15);
+}
+
+/* Explorer tree items */
+.tree-node {}
+.tree-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    border-radius: 6px;
+    transition: background-color 150ms ease, color 150ms ease;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.tree-item.node {
+    /* Nodes should have instant hover change */
+    transition: none;
+}
+.tree-item:hover {
+    background: rgba(255,255,255,0.06);
+}
+.tree-item.selected {
+    background: rgba(57,108,216,0.22);
+    color: #e7efff;
+}
+.tree-item.selected:hover {
+    background: rgba(57,108,216,0.30);
+}
+.tree-icon {
+    width: 14px;
+    display: inline-block;
+    color: #aab;
+}
+.tree-label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    /* Ensure no text-select cursor (I-beam) on hover over labels */
+    cursor: inherit;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* ---------------------------------------------------------
+   Tooltip indicators (info, warning, error)
+   Usage: a focusable wrapper with icon and hidden bubble.
+   The bubble shows on hover and focus-within.
+--------------------------------------------------------- */
+.nn-tip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 9999px;
+    font-size: 12px;
+    line-height: 1;
+    cursor: help;
+    outline: none;
+}
+.nn-tip:focus {
+    box-shadow: 0 0 0 2px rgba(57,108,216,0.35);
+}
+.nn-tip .nn-tip-icon {
+    display: inline-block;
+    transform: translateY(0px);
+}
+
+/* Color variants for the small dot background */
+.nn-tip.info { background: rgba(57,108,216,0.18); color: #9fc0ff; border: 1px solid rgba(159,192,255,0.35); }
+.nn-tip.warn { background: rgba(216,161,57,0.18); color: #ffd27f; border: 1px solid rgba(255,210,127,0.35); }
+.nn-tip.error { background: rgba(216,57,57,0.18); color: #ff9f9f; border: 1px solid rgba(255,159,159,0.35); }
+
+.nn-tip-bubble {
+    position: absolute;
+    min-width: 160px;
+    max-width: 280px;
+    padding: 8px 10px;
+    font-size: 12px;
+    line-height: 1.2;
+    border-radius: 8px;
+    color: #f6f6f6;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(26,26,26,0.98);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    pointer-events: none; /* prevent stealing cursor */
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity 120ms ease, transform 120ms ease;
+    z-index: 90;
+}
+
+/* Show bubble on hover/focus of wrapper */
+.nn-tip:hover .nn-tip-bubble,
+.nn-tip:focus .nn-tip-bubble,
+.nn-tip:focus-within .nn-tip-bubble {
+    opacity: 1;
+    transform: translateY(0px);
+}
+
+/* Bubble color accents per kind */
+.nn-tip-bubble--info { border-color: rgba(159,192,255,0.35); }
+.nn-tip-bubble--warn { border-color: rgba(255,210,127,0.35); }
+.nn-tip-bubble--error { border-color: rgba(255,159,159,0.35); }
+
+.nn-tip-text { display: inline; }
+
+/* Positioning helpers relative to the dot */
+.nn-tip-bubble--top { bottom: calc(100% + 8px); left: 50%; transform: translate(-50%, -4px); }
+.nn-tip:hover .nn-tip-bubble--top,
+.nn-tip:focus .nn-tip-bubble--top,
+.nn-tip:focus-within .nn-tip-bubble--top { transform: translate(-50%, 0); }
+
+.nn-tip-bubble--right { left: calc(100% + 8px); top: 50%; transform: translate(0, -50%) translateY(-4px); }
+.nn-tip:hover .nn-tip-bubble--right,
+.nn-tip:focus .nn-tip-bubble--right,
+.nn-tip:focus-within .nn-tip-bubble--right { transform: translate(0, -50%) translateY(0); }
+
+.nn-tip-bubble--bottom { top: calc(100% + 8px); left: 50%; transform: translate(-50%, 4px); }
+.nn-tip:hover .nn-tip-bubble--bottom,
+.nn-tip:focus .nn-tip-bubble--bottom,
+.nn-tip:focus-within .nn-tip-bubble--bottom { transform: translate(-50%, 0); }
+
+.nn-tip-bubble--left { right: calc(100% + 8px); top: 50%; transform: translate(0, -50%) translateY(-4px); }
+.nn-tip:hover .nn-tip-bubble--left,
+.nn-tip:focus .nn-tip-bubble--left,
+.nn-tip:focus-within .nn-tip-bubble--left { transform: translate(0, -50%) translateY(0); }

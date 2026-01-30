@@ -9,7 +9,7 @@ title = "neuronet"
 [web.resource]
 
 # Additional CSS style files
-style = []
+style = ["tailwind.css"]
 
 # Additional JavaScript files
 script = []
