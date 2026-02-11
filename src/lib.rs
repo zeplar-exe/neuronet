@@ -7,25 +7,17 @@ mod hooks;
 mod tools;
 mod models;
 mod settings;
+mod util;
 
 use state::{AppStore, ViewType};
-use views::{edit::EditView, configure::ConfigureView, execute::ExecuteView};
+use views::{edit::EditView, execute::ExecuteView};
 use hooks::error_listener::use_error_listener;
-
-static TAILWIND: Asset = asset!("/assets/tailwind.css");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NodeId(pub i64);
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GroupId(pub i64);
 
-pub async fn create_node() -> Option<i64> {
-    static mut NEXT: i64 = 1000;
-    unsafe {
-        NEXT += 1;
-        Some(NEXT)
-    }
-}
 
 pub fn App() -> Element {
     let mut store = use_signal(AppStore::default);
@@ -44,18 +36,26 @@ fn FlowCanvas() -> Element {
     let topbar_class = "nn-topbar";
 
     rsx! {
-        document::Stylesheet { href: TAILWIND }
+        document::Stylesheet { href: asset!("/assets/main.css") }
+        document::Stylesheet { href: asset!("/assets/view.css") }
 
         match current_view {
             ViewType::EDIT => rsx!( EditView {} ),
-            ViewType::CONFIGURE => rsx!( ConfigureView {} ),
             ViewType::EXECUTE => rsx!( ExecuteView {} ),
         }
 
         div { class: topbar_class,
+            // Left: view tabs
             TopbarButton { label: "EDIT", active: matches!(current_view, ViewType::EDIT), on_click: move |_| store.write().current_view = ViewType::EDIT }
-            TopbarButton { label: "CONFIGURE", active: matches!(current_view, ViewType::CONFIGURE), on_click: move |_| store.write().current_view = ViewType::CONFIGURE }
             TopbarButton { label: "EXECUTE", active: matches!(current_view, ViewType::EXECUTE), on_click: move |_| store.write().current_view = ViewType::EXECUTE }
+
+            // Spacer
+            div { style: "flex: 1" }
+
+            // Right: Run State switcher
+            {
+
+            }
         }
     }
 }

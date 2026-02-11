@@ -26,7 +26,6 @@ impl Tool for EdgeTool {
         let shift = mods.shift();
         let multi = mods.ctrl() || mods.meta();
 
-        // If Shift or Ctrl/Cmd: create edges from all currently selected nodes to this node
         if shift || multi {
             let mut s = ctx.store.write();
             let target_id = node.id;
@@ -38,14 +37,11 @@ impl Tool for EdgeTool {
                 }
             }
             if shift {
-                // Replace selection with just the clicked node
                 s.select_only(target_id);
             } else {
-                // Ctrl/Cmd: add the clicked node to the multiselect (ensure selected)
                 s.ensure_selected(target_id);
             }
         } else {
-            // No modifiers: behave like select-only
             ctx.store.write().select_only(node.id);
         }
     }
@@ -59,7 +55,7 @@ impl Tool for EdgeTool {
             else { s.select_only(node.id); }
         }
         self.drag_ids = s.selected.clone();
-        self.start_positions = s.nodes.iter().filter(|n| self.drag_ids.contains(&n.id)).map(|n| (n.id, n.position)).collect();
+        self.start_positions = s.network.neurons.iter().filter(|n| self.drag_ids.contains(&n.id)).map(|n| (n.id, n.position)).collect();
         self.dragging = true;
         self.moved = false;
         self.suppress_click = false;
@@ -74,7 +70,7 @@ impl Tool for EdgeTool {
         if dx.abs() + dy.abs() > 0.5 { self.moved = true; self.suppress_click = true; }
         if self.drag_ids.is_empty() { return; }
         let mut s = ctx.store.write();
-        for n in s.nodes.iter_mut() {
+        for n in s.network.neurons.iter_mut() {
             if let Some(&(sx, sy)) = self.start_positions.get(&n.id) {
                 if self.drag_ids.contains(&n.id) {
                     n.position = (sx + dx, sy + dy);

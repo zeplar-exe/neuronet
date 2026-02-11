@@ -6,7 +6,7 @@ use dioxus::core_macro::{component, rsx};
 pub fn CircleNode(radius: f64, selected: bool) -> Element {
     let size = radius * 2.0;
     let style = format!("width: {size}px; height: {size}px;");
-    // Use app-specific classes defined in assets/tailwind.css to ensure styling without Tailwind build
+
     let class = if selected {
         "nn-circle nn-circle--selected nn-select-none"
     } else {

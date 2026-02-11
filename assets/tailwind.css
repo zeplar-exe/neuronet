@@ -1,4 +1,2 @@
-/* Tailwind (optional) */
-@import "tailwindcss";
-@import "main.css";
-@import "view.css";
+/* @import "tailwindcss"; */
+@source "./src/**/*.{rs,html,css}";

@@ -1,7 +1,8 @@
 use dioxus::prelude::*;
 use std::collections::HashSet;
 use crate::components::tooltip::{TooltipIndicator, TooltipKind};
-use crate::models::{NeuronModelKind, NeuronModel};
+use crate::models::{NeuronModelKind};
+use crate::util::variant_eq;
 use crate::state::AppStore;
 
 #[component]
@@ -24,10 +25,10 @@ fn RenderNeuronProperties(store: Signal<AppStore>) -> Element {
     let (selected_neurons_count, unique_model_count, id_string, model_name_string, editable_snapshot): (usize, usize, String, String, Option<(i64, f64, f64, f64, f64, f64, f64)>) = {
         let s = store.read();
         let selected_ids = s.selected.clone();
-        let selected_neurons_ids: Vec<i64> = s.nodes.iter().filter(|n| selected_ids.contains(&n.id)).map(|n| n.id).collect();
+        let selected_neurons_ids: Vec<i64> = s.network.neurons.iter().filter(|n| selected_ids.contains(&n.id)).map(|n| n.id).collect();
         let selected_neurons_count = selected_neurons_ids.len();
 
-        let unique_model_names: HashSet<&'static str> = s.nodes.iter()
+        let unique_model_names: HashSet<&'static str> = s.network.neurons.iter()
             .filter(|n| selected_ids.contains(&n.id))
             .map(|n| n.model.name())
             .collect();
@@ -40,18 +41,18 @@ fn RenderNeuronProperties(store: Signal<AppStore>) -> Element {
         if selected_neurons_count == 1 {
             let nid = selected_neurons_ids[0];
             id = nid.to_string();
-            if let Some(node) = s.nodes.iter().find(|n| n.id == nid) {
+            if let Some(node) = s.network.neurons.iter().find(|n| n.id == nid) {
                 model_name = node.model.name().to_string();
-                if let NeuronModelKind::IntegrateFire(m) = &node.model {
-                    snapshot = Some((
-                        nid,
-                        m.state.excitation,
-                        m.config.reset_potential,
-                        m.config.threshold,
-                        m.config.strength,
-                        m.config.minimum_voltage,
-                        m.config.maximum_voltage,
-                    ));
+                if variant_eq(&node.model, &NeuronModelKind::integrate_fire()) {
+                    let idx = node.state_index as usize;
+                    let exec = &s.network.executor.integrate_fire;
+                    let voltage = *exec.voltage.get(idx).unwrap_or(&0.0);
+                    let reset = *exec.reset_potential.get(idx).unwrap_or(&-70.0);
+                    let threshold = *exec.threshold.get(idx).unwrap_or(&-55.0);
+                    let strength = *exec.strength.get(idx).unwrap_or(&30.0);
+                    let min_v = *exec.minimum_voltage.get(idx).unwrap_or(&-100.0);
+                    let max_v = *exec.maximum_voltage.get(idx).unwrap_or(&50.0);
+                    snapshot = Some((nid, voltage, reset, threshold, strength, min_v, max_v));
                 }
             }
         } else if unique_model_count == 1 {
@@ -78,19 +79,20 @@ fn RenderNeuronProperties(store: Signal<AppStore>) -> Element {
         };
 
         // If editable snapshot is present (IntegrateFire, single selection), show fields
-        if let Some((nid, excitation, reset, threshold, strength, min_v, max_v)) = editable_snapshot {
+        if let Some((nid, voltage_snapshot, reset, threshold, strength, min_v, max_v)) = editable_snapshot {
             // Handlers per field that write directly to the store with validation
-            let oninput_excitation = {
+            let oninput_voltage = {
                 let mut store = store.clone();
                 move |e: FormEvent| {
                     if let Ok(mut v) = e.value().parse::<f64>() {
                         let mut s = store.write();
-                        if let Some(n) = s.nodes.iter_mut().find(|n| n.id == nid) {
-                            if let NeuronModelKind::IntegrateFire(m) = &mut n.model {
-                                let min_v = m.config.minimum_voltage;
-                                let max_v = m.config.maximum_voltage;
+                        if let Some(n) = s.network.neurons.iter().find(|n| n.id == nid) {
+                            if variant_eq(&n.model, &NeuronModelKind::integrate_fire()) {
+                                let idx = n.state_index as usize;
+                                let min_v = s.network.executor.integrate_fire.minimum_voltage.get(idx).copied().unwrap_or(-1000.0);
+                                let max_v = s.network.executor.integrate_fire.maximum_voltage.get(idx).copied().unwrap_or(1000.0);
                                 v = v.clamp(min_v, max_v);
-                                m.state.excitation = v;
+                                if let Some(slot) = s.network.executor.integrate_fire.voltage.get_mut(idx) { *slot = v; }
                             }
                         }
                     }
@@ -101,15 +103,21 @@ fn RenderNeuronProperties(store: Signal<AppStore>) -> Element {
                 move |e: FormEvent| {
                     if let Ok(mut v) = e.value().parse::<f64>() {
                         let mut s = store.write();
-                        if let Some(n) = s.nodes.iter_mut().find(|n| n.id == nid) {
-                            if let NeuronModelKind::IntegrateFire(m) = &mut n.model {
-                                let min_v = m.config.minimum_voltage;
-                                let mut max_v = m.config.maximum_voltage;
+                        if let Some(n) = s.network.neurons.iter().find(|n| n.id == nid) {
+                            if variant_eq(&n.model, &NeuronModelKind::integrate_fire()) {
+                                let idx = n.state_index as usize;
+                                let min_v = s.network.executor.integrate_fire.minimum_voltage.get(idx).copied().unwrap_or(-1000.0);
+                                let mut max_v = s.network.executor.integrate_fire.maximum_voltage.get(idx).copied().unwrap_or(1000.0);
                                 if min_v > max_v { max_v = min_v; }
                                 v = v.clamp(min_v, max_v);
-                                m.config.reset_potential = v;
-                                if m.config.threshold < v { m.config.threshold = v; }
-                                m.state.excitation = m.state.excitation.clamp(min_v, max_v);
+                                if let Some(slot) = s.network.executor.integrate_fire.reset_potential.get_mut(idx) { *slot = v; }
+                                // ensure threshold >= reset
+                                if let Some(th) = s.network.executor.integrate_fire.threshold.get_mut(idx) {
+                                    if *th < v { *th = v; }
+                                    if *th > max_v { *th = max_v; }
+                                }
+                                // clamp voltage
+                                if let Some(vol) = s.network.executor.integrate_fire.voltage.get_mut(idx) { *vol = (*vol).clamp(min_v, max_v); }
                             }
                         }
                     }
@@ -120,13 +128,14 @@ fn RenderNeuronProperties(store: Signal<AppStore>) -> Element {
                 move |e: FormEvent| {
                     if let Ok(mut v) = e.value().parse::<f64>() {
                         let mut s = store.write();
-                        if let Some(n) = s.nodes.iter_mut().find(|n| n.id == nid) {
-                            if let NeuronModelKind::IntegrateFire(m) = &mut n.model {
-                                let reset = m.config.reset_potential;
-                                let max_v = m.config.maximum_voltage;
+                        if let Some(n) = s.network.neurons.iter().find(|n| n.id == nid) {
+                            if variant_eq(&n.model, &NeuronModelKind::integrate_fire()) {
+                                let idx = n.state_index as usize;
+                                let reset = s.network.executor.integrate_fire.reset_potential.get(idx).copied().unwrap_or(v);
+                                let max_v = s.network.executor.integrate_fire.maximum_voltage.get(idx).copied().unwrap_or(v);
                                 if reset > v { v = reset; }
                                 if v > max_v { v = max_v; }
-                                m.config.threshold = v;
+                                if let Some(th) = s.network.executor.integrate_fire.threshold.get_mut(idx) { *th = v; }
                             }
                         }
                     }
@@ -137,8 +146,11 @@ fn RenderNeuronProperties(store: Signal<AppStore>) -> Element {
                 move |e: FormEvent| {
                     if let Ok(v) = e.value().parse::<f64>() {
                         let mut s = store.write();
-                        if let Some(n) = s.nodes.iter_mut().find(|n| n.id == nid) {
-                            if let NeuronModelKind::IntegrateFire(m) = &mut n.model { m.config.strength = v; }
+                        if let Some(n) = s.network.neurons.iter().find(|n| n.id == nid) {
+                            if variant_eq(&n.model, &NeuronModelKind::integrate_fire()) {
+                                let idx = n.state_index as usize;
+                                if let Some(st) = s.network.executor.integrate_fire.strength.get_mut(idx) { *st = v; }
+                            }
                         }
                     }
                 }
@@ -148,18 +160,23 @@ fn RenderNeuronProperties(store: Signal<AppStore>) -> Element {
                 move |e: FormEvent| {
                     if let Ok(mut vmin) = e.value().parse::<f64>() {
                         let mut s = store.write();
-                        if let Some(n) = s.nodes.iter_mut().find(|n| n.id == nid) {
-                            if let NeuronModelKind::IntegrateFire(m) = &mut n.model {
-                                let mut vmax = m.config.maximum_voltage;
+                        if let Some(n) = s.network.neurons.iter().find(|n| n.id == nid) {
+                            if variant_eq(&n.model, &NeuronModelKind::integrate_fire()) {
+                                let idx = n.state_index as usize;
+                                let mut vmax = s.network.executor.integrate_fire.maximum_voltage.get(idx).copied().unwrap_or(vmin);
                                 if vmin > vmax { vmax = vmin; }
-                                m.config.minimum_voltage = vmin;
-                                m.config.maximum_voltage = vmax;
-                                // adjust reset/threshold/excitation to range
-                                let reset = m.config.reset_potential.clamp(vmin, vmax);
-                                m.config.reset_potential = reset;
-                                if m.config.threshold < reset { m.config.threshold = reset; }
-                                if m.config.threshold > vmax { m.config.threshold = vmax; }
-                                m.state.excitation = m.state.excitation.clamp(vmin, vmax);
+                                if let Some(min_slot) = s.network.executor.integrate_fire.minimum_voltage.get_mut(idx) { *min_slot = vmin; }
+                                if let Some(max_slot) = s.network.executor.integrate_fire.maximum_voltage.get_mut(idx) { *max_slot = vmax; }
+                                // adjust reset/threshold/voltage to range
+                                if let Some(reset_slot) = s.network.executor.integrate_fire.reset_potential.get_mut(idx) {
+                                    *reset_slot = (*reset_slot).clamp(vmin, vmax);
+                                }
+                                let reset_now = s.network.executor.integrate_fire.reset_potential.get(idx).copied().unwrap_or(vmin);
+                                if let Some(th_slot) = s.network.executor.integrate_fire.threshold.get_mut(idx) {
+                                    if *th_slot < reset_now { *th_slot = reset_now; }
+                                    if *th_slot > vmax { *th_slot = vmax; }
+                                }
+                                if let Some(vol_slot) = s.network.executor.integrate_fire.voltage.get_mut(idx) { *vol_slot = (*vol_slot).clamp(vmin, vmax); }
                             }
                         }
                     }
@@ -170,16 +187,22 @@ fn RenderNeuronProperties(store: Signal<AppStore>) -> Element {
                 move |e: FormEvent| {
                     if let Ok(mut vmax) = e.value().parse::<f64>() {
                         let mut s = store.write();
-                        if let Some(n) = s.nodes.iter_mut().find(|n| n.id == nid) {
-                            if let NeuronModelKind::IntegrateFire(m) = &mut n.model {
-                                let vmin = m.config.minimum_voltage;
+                        if let Some(n) = s.network.neurons.iter().find(|n| n.id == nid) {
+                            if variant_eq(&n.model, &NeuronModelKind::integrate_fire()) {
+                                let idx = n.state_index as usize;
+                                let vmin = s.network.executor.integrate_fire.minimum_voltage.get(idx).copied().unwrap_or(vmax);
                                 if vmax < vmin { vmax = vmin; }
-                                m.config.maximum_voltage = vmax;
+                                if let Some(max_slot) = s.network.executor.integrate_fire.maximum_voltage.get_mut(idx) { *max_slot = vmax; }
                                 // clamp others
-                                if m.config.reset_potential > vmax { m.config.reset_potential = vmax; }
-                                if m.config.threshold > vmax { m.config.threshold = vmax; }
-                                if m.config.threshold < m.config.reset_potential { m.config.threshold = m.config.reset_potential; }
-                                m.state.excitation = m.state.excitation.clamp(vmin, vmax);
+                                if let Some(reset_slot) = s.network.executor.integrate_fire.reset_potential.get_mut(idx) {
+                                    if *reset_slot > vmax { *reset_slot = vmax; }
+                                }
+                                let reset_now = s.network.executor.integrate_fire.reset_potential.get(idx).copied().unwrap_or(vmin);
+                                if let Some(th_slot) = s.network.executor.integrate_fire.threshold.get_mut(idx) {
+                                    if *th_slot > vmax { *th_slot = vmax; }
+                                    if *th_slot < reset_now { *th_slot = reset_now; }
+                                }
+                                if let Some(vol_slot) = s.network.executor.integrate_fire.voltage.get_mut(idx) { *vol_slot = (*vol_slot).clamp(vmin, vmax); }
                             }
                         }
                     }
@@ -190,6 +213,7 @@ fn RenderNeuronProperties(store: Signal<AppStore>) -> Element {
                 div {
                     {base}
                     // Editable fields bound to current snapshot values
+                    NumberRow { label: "Membrane Potential (mV)", value: voltage_snapshot, oninput: oninput_voltage }
                     NumberRow { label: "Reset (mV)", value: reset, oninput: oninput_reset }
                     NumberRow { label: "Threshold (mV)", value: threshold, oninput: oninput_threshold }
                     NumberRow { label: "Strength", value: strength, oninput: oninput_strength }

@@ -1,5 +1,5 @@
 use dioxus::prelude::*;
-use crate::state::{AppStore, ViewType, PrimaryTool};
+use crate::state::{AppStore, ViewType, Neuron};
 use crate::components::explorer::Explorer;
 use crate::components::properties::Properties;
 use crate::components::circle::CircleNode;
@@ -12,7 +12,7 @@ pub fn EditView() -> Element {
     let mut tool_ctx = ToolContext { store: store.clone() };
     // Keep a stateful instance of the currently active tool
     let mut active_tool: Signal<Box<dyn crate::tools::Tool>> = use_signal(|| {
-        let name = store.read().view_state(ViewType::EDIT).selected_tool.name;
+        let name = store.read().view_state(ViewType::EDIT).selected_tool;
         tool_by_name(name)
     });
     // View offset for focusing/centering (must exist before handlers)
@@ -45,7 +45,7 @@ pub fn EditView() -> Element {
                     if s.selected.is_empty() { return; }
                     let mut sum_x = 0.0f64; let mut sum_y = 0.0f64; let mut count = 0.0f64;
                     for id in s.selected.iter() {
-                        if let Some(n) = s.nodes.iter().find(|n| &n.id == id) {
+                        if let Some(n) = s.network.neurons.iter().find(|n| &n.id == id) {
                             let r = 20.0;
                             sum_x += n.position.0 + r; sum_y += n.position.1 + r; count += 1.0;
                         }
@@ -64,10 +64,10 @@ pub fn EditView() -> Element {
                 Key::Character(k) => {
                     let ku = k.to_uppercase();
                     match ku.as_str() {
-                        "S" => { let mut s = store.write(); s.set_tool(ViewType::EDIT, PrimaryTool { name: "select" }); active_tool.set(tool_by_name("select")); },
-                        "A" => { let mut s = store.write(); s.set_tool(ViewType::EDIT, PrimaryTool { name: "add" }); active_tool.set(tool_by_name("add")); },
-                        "E" => { let mut s = store.write(); s.set_tool(ViewType::EDIT, PrimaryTool { name: "edge" }); active_tool.set(tool_by_name("edge")); },
-                        "R" => { let mut s = store.write(); s.set_tool(ViewType::EDIT, PrimaryTool { name: "region" }); active_tool.set(tool_by_name("region")); },
+                        "S" => { let mut s = store.write(); s.set_tool(ViewType::EDIT, "select"); active_tool.set(tool_by_name("select")); },
+                        "A" => { let mut s = store.write(); s.set_tool(ViewType::EDIT, "add"); active_tool.set(tool_by_name("add")); },
+                        "E" => { let mut s = store.write(); s.set_tool(ViewType::EDIT, "edge"); active_tool.set(tool_by_name("edge")); },
+                        "R" => { let mut s = store.write(); s.set_tool(ViewType::EDIT, "region"); active_tool.set(tool_by_name("region")); },
                         _ => {}
                     }
                 }
@@ -88,7 +88,7 @@ pub fn EditView() -> Element {
     let node_centers: std::collections::HashMap<i64, (f64, f64)> = {
         let s = store.read();
         let mut map = std::collections::HashMap::new();
-        for n in s.nodes.iter() {
+        for n in s.network.neurons.iter() {
             let r = 20.0;
             let cx = n.position.0 + r;
             let cy = n.position.1 + r;
@@ -140,11 +140,13 @@ pub fn EditView() -> Element {
             }
         }
     };
+    
+    fn update_active_tool() {
+        
+    }
 
     rsx! {
-        // Canvas area
         div { class: canvas_class, tabindex: 0, onkeydown: onkeydown_canvas, onclick: onclick_canvas, onmousedown: onmousedown_canvas, onmousemove: onmousemove_canvas, onmouseup: onmouseup_canvas,
-            // Inner translated layer for panning/focusing
             {
                 let (ox, oy) = *canvas_offset.read();
                 let layer_style = format!("position: absolute; inset: 0; transform: translate({ox}px, {oy}px);");
@@ -152,13 +154,13 @@ pub fn EditView() -> Element {
                     div { style: layer_style,
                         // Edge rendering (behind nodes)
                         svg { style: "position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;",
-                            for e in store.read().edges.iter() {
+                            for e in store.read().network.edges.iter() {
                                 if let (Some(&(x1, y1)), Some(&(x2, y2))) = (node_centers.get(&e.source), node_centers.get(&e.target)) {
                                     line { x1: "{x1}", y1: "{y1}", x2: "{x2}", y2: "{y2}", stroke: "#aab", stroke_width: "2" }
                                 }
                             }
                         }
-                        for n in store.read().nodes.iter() {
+                        for n in store.read().network.neurons.iter() {
                             RenderNode { node: n.clone(), store: store.clone(), active_tool: active_tool.clone(), is_dragging: is_dragging.clone() }
                         }
                         // AddTool selection box overlay
@@ -172,10 +174,10 @@ pub fn EditView() -> Element {
 
         // Toolbar
         div { class: toolbar_class,
-            ToolButton { label: "SEL [S]", active: store.read().view_state(ViewType::EDIT).selected_tool.name == "select", onclick: move |_| { store.write().set_tool(ViewType::EDIT, PrimaryTool { name: "select" }); let mut t = active_tool.clone(); t.set(tool_by_name("select")); } }
-            ToolButton { label: "ADD [A]", active: store.read().view_state(ViewType::EDIT).selected_tool.name == "add", onclick: move |_| { store.write().set_tool(ViewType::EDIT, PrimaryTool { name: "add" }); let mut t = active_tool.clone(); t.set(tool_by_name("add")); } }
-            ToolButton { label: "EDG [E]", active: store.read().view_state(ViewType::EDIT).selected_tool.name == "edge", onclick: move |_| { store.write().set_tool(ViewType::EDIT, PrimaryTool { name: "edge" }); let mut t = active_tool.clone(); t.set(tool_by_name("edge")); } }
-            ToolButton { label: "REG [R]", active: store.read().view_state(ViewType::EDIT).selected_tool.name == "region", onclick: move |_| { store.write().set_tool(ViewType::EDIT, PrimaryTool { name: "region" }); let mut t = active_tool.clone(); t.set(tool_by_name("region")); } }
+            ToolButton { label: "SEL [S]", active: &*active_tool.read().name() == "select", onclick: move |e| { store.write().set_tool(ViewType::EDIT, "select"); active_tool.set(tool_by_name("select")); } }
+            ToolButton { label: "ADD [A]", active: &*active_tool.read().name() == "add", onclick: move |e| { store.write().set_tool(ViewType::EDIT, "add"); active_tool.set(tool_by_name("add")); } }
+            ToolButton { label: "EDG [E]", active: &*active_tool.read().name() == "edge", onclick: move |e| { store.write().set_tool(ViewType::EDIT, "edge"); active_tool.set(tool_by_name("edge")); } }
+            ToolButton { label: "REG [R]", active: &*active_tool.read().name() == "region", onclick: move |e| { store.write().set_tool(ViewType::EDIT, "region"); active_tool.set(tool_by_name("region")); } }
         }
 
         // Sidebars
@@ -267,7 +269,8 @@ fn AddPopulationModal(store: Signal<AppStore>, active_tool: Signal<Box<dyn crate
             let mut store_signal = store.clone();
             let mut active_tool2 = active_tool.clone();
             let rect_local = rect;
-            dioxus::core::spawn(async move {
+
+            spawn(async move {
                 let (x, y, w, h) = rect_local;
                 // Simple LCG for pseudo-random without external deps
                 let mut seed: u64 = 0x853c49e6748fea9b;
@@ -286,8 +289,8 @@ fn AddPopulationModal(store: Signal<AppStore>, active_tool: Signal<Box<dyn crate
                 // Create a group for this population, named after the population
                 let group_id = {
                     let mut s = store_signal.write();
-                    let next_id = s.groups.iter().map(|g| g.id).max().unwrap_or(0) + 1;
-                    s.groups.push(crate::state::Group {
+                    let next_id = s.network.groups.iter().map(|g| g.id).max().unwrap_or(0) + 1;
+                    s.network.groups.push(crate::state::Group {
                         id: next_id,
                         name: name.clone(),
                         parent: 0,
@@ -297,7 +300,6 @@ fn AddPopulationModal(store: Signal<AppStore>, active_tool: Signal<Box<dyn crate
                 };
 
                 for i in 0..count_val {
-                    let id = crate::create_node().await.unwrap_or(0);
                     let (px, py) = match arrangement.as_str() {
                         "Grid" => {
                             let r = i / grid_cols;
@@ -324,17 +326,23 @@ fn AddPopulationModal(store: Signal<AppStore>, active_tool: Signal<Box<dyn crate
                     };
 
                     let mut s = store_signal.write();
-                    s.push_neuron(crate::state::Neuron {
+                    let kind = NeuronModelKind::default();
+                    let state_index = s.get_next_state_index(&kind);
+                    let id = s.network.neurons.len() as i64;
+
+                    s.push_neuron(Neuron {
                         id: id,
-                        model: NeuronModelKind::default(),
+                        model: kind,
+                        state_index,
                         position: (px, py),
                         parent: group_id,
                     });
-                    if let Some(gr) = s.groups.iter_mut().find(|g| g.id == group_id) {
+
+                    if let Some(gr) = s.network.groups.iter_mut().find(|g| g.id == group_id) {
                         gr.children.push(id);
                     }
                 }
-                // Clear tool request/overlay after adding
+
                 active_tool2.write().clear_request();
             });
         }

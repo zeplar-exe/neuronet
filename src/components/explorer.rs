@@ -96,7 +96,7 @@ fn build_tree(store: &AppStore) -> Vec<TreeNode> {
     let mut buckets: std::collections::HashMap<i64, Vec<TreeNode>> = Default::default();
 
     // Groups
-    for group in store.groups.iter() {
+    for group in store.network.groups.iter() {
         buckets.entry(group.parent).or_default().push(TreeNode {
             kind: TreeKind::Group,
             id: group.id,
@@ -106,7 +106,7 @@ fn build_tree(store: &AppStore) -> Vec<TreeNode> {
         });
     }
     // Nodes
-    for node in store.nodes.iter() {
+    for node in store.network.neurons.iter() {
         buckets.entry(node.parent).or_default().push(TreeNode {
             kind: TreeKind::Neuron,
             id: node.id,

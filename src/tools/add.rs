@@ -20,8 +20,9 @@ impl Tool for AddTool {
         self.rect = Some((x, y, 0.0, 0.0));
     }
     fn on_drag(&mut self, _ctx: &mut ToolContext, evt: &MouseEvent) {
-        let x = evt.page_coordinates().x as f64;
-        let y = evt.page_coordinates().y as f64;
+        // Use client coordinates consistently (viewport-relative), matching drag_start
+        let x = evt.client_coordinates().x as f64;
+        let y = evt.client_coordinates().y as f64;
         if let Some((sx, sy)) = self.drag_start {
             let left = sx.min(x);
             let top = sy.min(y);
@@ -37,7 +38,7 @@ impl Tool for AddTool {
             }
         }
         self.drag_start = None;
-        ctx.store.write().set_tool(ViewType::EDIT, crate::state::PrimaryTool { name: "add" });
+        ctx.store.write().set_tool(ViewType::EDIT, "add");
     }
     fn select_rect(&self) -> Option<(f64, f64, f64, f64)> { self.rect }
     fn request(&self) -> Option<ToolRequest> { self.pending.clone() }
