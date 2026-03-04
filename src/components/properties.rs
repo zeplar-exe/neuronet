@@ -25,8 +25,8 @@ fn RenderNeuronProperties(store: Signal<AppStore>) -> Element {
     let (selected_neurons_count, unique_model_count, id_string, model_name_string, editable_snapshot): (usize, usize, String, String, Option<(i64, f64, f64, f64, f64, f64, f64)>) = {
         let s = store.read();
         let selected_ids = s.selected.clone();
-        let selected_neurons_ids: Vec<i64> = s.network.neurons.iter().filter(|n| selected_ids.contains(&n.id)).map(|n| n.id).collect();
-        let selected_neurons_count = selected_neurons_ids.len();
+        let selected_neurons = s.get_selected_neurons();
+        let selected_neurons_count = selected_neurons.len();
 
         let unique_model_names: HashSet<&'static str> = s.network.neurons.iter()
             .filter(|n| selected_ids.contains(&n.id))
@@ -34,26 +34,23 @@ fn RenderNeuronProperties(store: Signal<AppStore>) -> Element {
             .collect();
         let unique_model_count = unique_model_names.len();
 
-        let mut id = "<mixed>".to_string();
+        let id = "<mixed>".to_string();
         let mut model_name = "<mixed>".to_string();
         let mut snapshot: Option<(i64, f64, f64, f64, f64, f64, f64)> = None;
 
         if selected_neurons_count == 1 {
-            let nid = selected_neurons_ids[0];
-            id = nid.to_string();
-            if let Some(node) = s.network.neurons.iter().find(|n| n.id == nid) {
-                model_name = node.model.name().to_string();
-                if variant_eq(&node.model, &NeuronModelKind::integrate_fire()) {
-                    let idx = node.state_index as usize;
-                    let exec = &s.network.executor.integrate_fire;
-                    let voltage = *exec.voltage.get(idx).unwrap_or(&0.0);
-                    let reset = *exec.reset_potential.get(idx).unwrap_or(&-70.0);
-                    let threshold = *exec.threshold.get(idx).unwrap_or(&-55.0);
-                    let strength = *exec.strength.get(idx).unwrap_or(&30.0);
-                    let min_v = *exec.minimum_voltage.get(idx).unwrap_or(&-100.0);
-                    let max_v = *exec.maximum_voltage.get(idx).unwrap_or(&50.0);
-                    snapshot = Some((nid, voltage, reset, threshold, strength, min_v, max_v));
-                }
+            let n = selected_neurons[0];
+            model_name = n.model.name().to_string();
+            if variant_eq(&n.model, &NeuronModelKind::integrate_fire()) {
+                let idx = n.state_index as usize;
+                let exec = &s.network.executor.integrate_fire;
+                let voltage = *exec.voltage.get(idx).unwrap_or(&0.0);
+                let reset = *exec.reset_potential.get(idx).unwrap_or(&-70.0);
+                let threshold = *exec.threshold.get(idx).unwrap_or(&-55.0);
+                let strength = *exec.strength.get(idx).unwrap_or(&30.0);
+                let min_v = *exec.minimum_voltage.get(idx).unwrap_or(&-100.0);
+                let max_v = *exec.maximum_voltage.get(idx).unwrap_or(&50.0);
+                snapshot = Some((n.id, voltage, reset, threshold, strength, min_v, max_v));
             }
         } else if unique_model_count == 1 {
             model_name = unique_model_names.iter().next().copied().unwrap_or("").to_string();

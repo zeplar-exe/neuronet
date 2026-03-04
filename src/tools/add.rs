@@ -1,10 +1,10 @@
 use dioxus::prelude::*;
-use crate::state::ViewType;
+use crate::state::{Rect, ViewType};
 use crate::tools::{Tool, ToolContext, ToolRequest};
 
 pub struct AddTool {
     drag_start: Option<(f64, f64)>,
-    rect: Option<(f64, f64, f64, f64)>,
+    rect: Option<Rect>,
     pending: Option<ToolRequest>,
 }
 impl Default for AddTool {
@@ -14,13 +14,12 @@ impl Tool for AddTool {
     fn name(&self) -> &'static str { "add" }
     fn on_canvas_click(&mut self, _ctx: &mut ToolContext, _evt: &MouseEvent) {}
     fn on_drag_start(&mut self, _ctx: &mut ToolContext, evt: &MouseEvent) {
-        let x = evt.client_coordinates().x as f64;
-        let y = evt.client_coordinates().y as f64;
+        let x = evt.client_coordinates().x;
+        let y = evt.client_coordinates().y;
         self.drag_start = Some((x, y));
-        self.rect = Some((x, y, 0.0, 0.0));
+        self.rect = Some(Rect::from_dimensions_f(x, y, 0.0, 0.0));
     }
     fn on_drag(&mut self, _ctx: &mut ToolContext, evt: &MouseEvent) {
-        // Use client coordinates consistently (viewport-relative), matching drag_start
         let x = evt.client_coordinates().x as f64;
         let y = evt.client_coordinates().y as f64;
         if let Some((sx, sy)) = self.drag_start {
@@ -28,19 +27,20 @@ impl Tool for AddTool {
             let top = sy.min(y);
             let w = (sx - x).abs();
             let h = (sy - y).abs();
-            self.rect = Some((left, top, w, h));
+            self.rect = Some(Rect::from_dimensions_f(left, top, w, h));
         }
     }
     fn on_drag_end(&mut self, ctx: &mut ToolContext, _evt: &MouseEvent) {
-        if let Some((x, y, w, h)) = self.rect {
-            if w >= 2.0 && h >= 2.0 {
-                self.pending = Some(ToolRequest::AddPopulation { rect: (x, y, w, h) });
-            }
+        let (x, y, w, h) = self.rect.clone().unwrap().as_tuple_wh();
+
+        if w >= 2.0 && h >= 2.0 {
+            self.pending = Some(ToolRequest::AddPopulation { rect: Rect::from_dimensions_f(x, y, w, h) });
         }
+
         self.drag_start = None;
         ctx.store.write().set_tool(ViewType::EDIT, "add");
     }
-    fn select_rect(&self) -> Option<(f64, f64, f64, f64)> { self.rect }
+    fn select_rect(&self) -> Option<Rect> { self.rect.clone() }
     fn request(&self) -> Option<ToolRequest> { self.pending.clone() }
     fn clear_request(&mut self) { self.pending = None; self.rect = None; self.drag_start = None; }
 }

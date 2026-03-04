@@ -3,7 +3,6 @@ use dioxus::prelude::*;
 mod state;
 mod views;
 mod components;
-mod hooks;
 mod tools;
 mod models;
 mod settings;
@@ -11,33 +10,18 @@ mod util;
 
 use state::{AppStore, ViewType};
 use views::{edit::EditView, execute::ExecuteView};
-use hooks::error_listener::use_error_listener;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct NodeId(pub i64);
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct GroupId(pub i64);
 
 
 pub fn App() -> Element {
     let mut store = use_signal(AppStore::default);
     provide_context(store.clone());
 
-    rsx! { FlowCanvas {} }
-}
-
-#[component]
-fn FlowCanvas() -> Element {
-    use_error_listener();
-
-    let mut store = use_context::<Signal<AppStore>>();
     let current_view = store.read().current_view;
-
     let topbar_class = "nn-topbar";
-
+    
     rsx! {
-        document::Stylesheet { href: asset!("/assets/main.css") }
-        document::Stylesheet { href: asset!("/assets/view.css") }
+        Stylesheet { href: asset!("/assets/main.css") }
+        Stylesheet { href: asset!("/assets/view.css") }
 
         match current_view {
             ViewType::EDIT => rsx!( EditView {} ),

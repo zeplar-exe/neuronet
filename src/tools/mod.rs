@@ -3,7 +3,7 @@ pub mod add;
 pub mod edge;
 
 use dioxus::prelude::*;
-use crate::state::{AppStore, Neuron, ViewType};
+use crate::state::{AppStore, Neuron, Rect, ViewType};
 use crate::tools::add::AddTool;
 use crate::tools::edge::EdgeTool;
 use crate::tools::select::SelectTool;
@@ -24,14 +24,14 @@ pub trait Tool {
     fn on_drag_end(&mut self, _ctx: &mut ToolContext, _evt: &MouseEvent) {}
 
     // Optional UI exposure for overlays and requests
-    fn select_rect(&self) -> Option<(f64, f64, f64, f64)> { None }
+    fn select_rect(&self) -> Option<Rect> { None }
     fn request(&self) -> Option<ToolRequest> { None }
     fn clear_request(&mut self) {}
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ToolRequest {
-    AddPopulation { rect: (f64, f64, f64, f64) },
+    AddPopulation { rect: Rect },
 }
 
 // Factory helper

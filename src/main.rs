@@ -2,6 +2,6 @@ use dioxus::prelude::*;
 use neuronet::App;
 
 fn main() {
-    // Launch the application from the library crate
-    dioxus::launch(App);
+    console_error_panic_hook::set_once();
+    launch(App);
 }

@@ -4,7 +4,7 @@ use crate::state::AppStore;
 #[derive(Clone, Debug, PartialEq)]
 struct TreeNode {
     kind: TreeKind,
-    id: i64,
+    neuron_id: i64,
     name: String,
     parent: i64,
     children: Vec<TreeNode>,
@@ -19,21 +19,17 @@ struct CtxMenu { x: f64, y: f64, kind: TreeKind, id: i64, name: String }
 #[component]
 pub fn Explorer() -> Element {
     let mut store = use_context::<Signal<AppStore>>();
-    // Track expanded groups
     let expanded: Signal<std::collections::HashSet<i64>> = use_signal(Default::default);
-    // Context menu state
     let mut ctx_menu: Signal<Option<CtxMenu>> = use_signal(|| None);
-    // Build tree reactively from store — real-time updates
     let tree: Vec<TreeNode> = build_tree(&store.read());
 
-    // Keydown handler to support grouping when Explorer has focus
     let onkeydown = {
         let mut store = store.clone();
         move |e: KeyboardEvent| {
             match e.key() {
                 Key::Character(k) if (k.eq_ignore_ascii_case("g")) && (e.modifiers().ctrl() || e.modifiers().meta()) => {
                     e.prevent_default();
-                    store.write().group_selected(None);
+                    store.write().group_selected(&"Group".to_string());
                 }
                 _ => {}
             }
@@ -49,41 +45,41 @@ pub fn Explorer() -> Element {
                 RenderTreeNode { node: node.clone(), depth: 0, expanded: expanded.clone(), store: store.clone(), ctx_menu: ctx_menu.clone() }
             }
 
-            // Context menu overlay
             if let Some(menu) = ctx_menu.read().clone() {
-                // Backdrop to close
                 div { class: "fixed inset-0 z-[65]", onclick: move |_| ctx_menu.set(None) }
-                // Menu box positioned within sidebar (absolute is fine since sidebar is fixed)
                 {
-                    // Clone values for use across multiple move closures
                     let kind_for_select = menu.kind.clone();
                     let id_for_select = menu.id;
                     let kind_for_delete = menu.kind.clone();
                     let id_for_delete = menu.id;
                     rsx! {
                         div { style: format!("position: absolute; left: {}px; top: {}px;", menu.x, menu.y), class: "nn-menu",
-                    div { class: "nn-menu-item", onclick: move |_| {
-                        // Select: nodes select-only; groups select group only
-                        let mut s = store.write();
-                        match kind_for_select {
-                            TreeKind::Neuron => s.select_only(id_for_select),
-                            TreeKind::Group => s.select_group_only(id_for_select),
-                        }
-                        ctx_menu.set(None);
-                    }, "Select" }
-                    div { class: "nn-menu-item opacity-60", onclick: move |_| { ctx_menu.set(None); }, "Rename (coming soon)" }
-                    div { class: "nn-menu-item", onclick: move |_| {
-                        // Delete node or group (recursive)
-                        {
+                        div { class: "nn-menu-item", onclick: move |_| {
                             let mut s = store.write();
-                            match kind_for_delete {
-                                TreeKind::Neuron => s.delete_neuron(id_for_delete),
-                                TreeKind::Group => s.delete_group_recursive(id_for_delete),
+                            match kind_for_select {
+                                TreeKind::Neuron => s.select_only(id_for_select),
+                                TreeKind::Group => s.select_group_only(id_for_select),
                             }
+                            ctx_menu.set(None);
+                        }, "Select" }
+                        div { class: "nn-menu-item opacity-60", onclick: move |_| { ctx_menu.set(None); }, "Rename (coming soon)" }
+                        div { class: "nn-menu-item opacity-60", onclick: move |_| {
+                                let mut s = store.write();
+                                s.group_selected(&"Group".to_string());
+    
+                                ctx_menu.set(None);
+                        }, "Group" }
+                        div { class: "nn-menu-item", onclick: move |_| {
+                            {
+                                let mut s = store.write();
+                                match kind_for_delete {
+                                    TreeKind::Neuron => s.delete_neuron(id_for_delete),
+                                    TreeKind::Group => s.delete_group_recursive(id_for_delete),
+                                }
+                            }
+                            ctx_menu.set(None);
+                            }, "Delete" }
                         }
-                        ctx_menu.set(None);
-                    }, "Delete" }
-                }
                     }
                 }
             }
@@ -92,26 +88,23 @@ pub fn Explorer() -> Element {
 }
 
 fn build_tree(store: &AppStore) -> Vec<TreeNode> {
-    // Bucket all entries by parent id to avoid ordering issues
     let mut buckets: std::collections::HashMap<i64, Vec<TreeNode>> = Default::default();
 
-    // Groups
     for group in store.network.groups.iter() {
         buckets.entry(group.parent).or_default().push(TreeNode {
             kind: TreeKind::Group,
-            id: group.id,
+            neuron_id: group.id,
             name: group.name.clone(),
             parent: group.parent,
             children: vec![],
         });
     }
-    // Nodes
-    for node in store.network.neurons.iter() {
-        buckets.entry(node.parent).or_default().push(TreeNode {
+    for neuron in store.network.neurons.iter() {
+        buckets.entry(neuron.parent).or_default().push(TreeNode {
             kind: TreeKind::Neuron,
-            id: node.id,
-            name: node.id.to_string(),
-            parent: node.parent,
+            neuron_id: neuron.id,
+            name: neuron.id.to_string(),
+            parent: neuron.parent,
             children: vec![],
         });
     }
@@ -121,38 +114,33 @@ fn build_tree(store: &AppStore) -> Vec<TreeNode> {
         list.sort_by(|a, b| match (&a.kind, &b.kind) {
             (TreeKind::Group, TreeKind::Neuron) => Less,
             (TreeKind::Neuron, TreeKind::Group) => Greater,
-            _ => a.id.cmp(&b.id),
+            _ => a.neuron_id.cmp(&b.neuron_id),
         });
     }
 
     fn assemble(parent_id: i64, buckets: &mut std::collections::HashMap<i64, Vec<TreeNode>>) -> Vec<TreeNode> {
-        // Take the children for this parent if present
         let mut items = buckets.remove(&parent_id).unwrap_or_default();
-        // For each group, assemble its subtree
+        
         for item in items.iter_mut() {
             if let TreeKind::Group = item.kind {
-                let children = assemble(item.id, buckets);
+                let children = assemble(item.neuron_id, buckets);
                 item.children = children;
             }
         }
-        // Sort groups before nodes and by id
+        
         sort_nodes(&mut items);
         items
     }
 
-    // Build from root parent (0)
     let mut roots = assemble(0, &mut buckets);
 
-    // Any remaining entries with missing parents become additional roots
-    // (handles orphaned nodes/groups gracefully)
     if !buckets.is_empty() {
         let mut extra: Vec<TreeNode> = vec![];
-        // Collect all remaining and clear buckets
+        
         for (_, mut v) in buckets.drain() {
             extra.append(&mut v);
         }
-        // For any remaining groups in extras, ensure their nested children are connected
-        // by running assemble on their ids using an empty buckets map (no further nesting possible now)
+        
         sort_nodes(&mut extra);
         roots.extend(extra);
         sort_nodes(&mut roots);
@@ -170,13 +158,14 @@ fn RenderTreeNode(
     ctx_menu: Signal<Option<CtxMenu>>,
 ) -> Element {
     let is_group = matches!(node.kind, TreeKind::Group);
-    let is_expanded = expanded.read().contains(&node.id);
+    let is_expanded = expanded.read().contains(&node.neuron_id);
     let has_children = !node.children.is_empty();
     let is_selected = if is_group {
-        store.read().selected_groups.iter().any(|&gid| gid == node.id)
+        store.read().selected_groups.iter().any(|&gid| gid == node.neuron_id)
     } else {
-        store.read().selected.iter().any(|&sid| sid == node.id)
+        store.read().selected.iter().any(|&sid| sid == node.neuron_id)
     };
+    let neuron_data = store.read().get_neuron(node.neuron_id).clone();
 
     let indent = depth * 16;
     let cursor_class = if is_group { "cursor-pointer" } else { "cursor-default" };
@@ -188,30 +177,33 @@ fn RenderTreeNode(
                 style: row_style,
                 onclick: move |e| {
                     if is_group {
-                        // Ctrl/Cmd click toggles group selection; otherwise expand/collapse
                         if e.modifiers().ctrl() || e.modifiers().meta() {
-                            store.write().toggle_group_selected(node.id);
+                            store.write().toggle_group_selected(node.neuron_id);
                         } else {
                             let mut s = expanded.write();
-                            if s.contains(&node.id) { s.remove(&node.id); } else { s.insert(node.id); }
+                            if s.contains(&node.neuron_id) { s.remove(&node.neuron_id); } else { s.insert(node.neuron_id); }
                         }
                     } else {
-                        // Neuron: Ctrl/Cmd toggles, otherwise select only
                         if e.modifiers().ctrl() || e.modifiers().meta() {
-                            store.write().toggle_selected(node.id);
+                            store.write().toggle_selected(node.neuron_id);
                         } else {
-                            store.write().select_only(node.id);
+                            store.write().select_only(node.neuron_id);
                         }
                     }
+                },
+                ondoubleclick: move |e| {
+                    e.prevent_default();
+                    
+                    store.write().pan_to(neuron_data.position, true);
                 },
                 oncontextmenu: move |e: MouseEvent| {
                     e.prevent_default();
                     let p = e.client_coordinates();
                     ctx_menu.set(Some(CtxMenu {
-                        x: p.x as f64,
-                        y: p.y as f64,
+                        x: p.x,
+                        y: p.y,
                         kind: node.kind.clone(),
-                        id: node.id,
+                        id: node.neuron_id,
                         name: node.name.clone(),
                     }));
                 },

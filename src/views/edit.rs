@@ -1,5 +1,6 @@
+use dioxus::html::geometry::ClientPoint;
 use dioxus::prelude::*;
-use crate::state::{AppStore, ViewType, Neuron};
+use crate::state::{AppStore, ViewType, Neuron, Color, Group, Rect};
 use crate::components::explorer::Explorer;
 use crate::components::properties::Properties;
 use crate::components::circle::CircleNode;
@@ -9,65 +10,62 @@ use crate::tools::{tool_by_name, ToolContext, ToolRequest};
 #[component]
 pub fn EditView() -> Element {
     let mut store = use_context::<Signal<AppStore>>();
-    let mut tool_ctx = ToolContext { store: store.clone() };
-    // Keep a stateful instance of the currently active tool
+    let tool_ctx = ToolContext { store: store.clone() };
     let mut active_tool: Signal<Box<dyn crate::tools::Tool>> = use_signal(|| {
-        let name = store.read().view_state(ViewType::EDIT).selected_tool;
+        let name = store.read().set_view_state(ViewType::EDIT).selected_tool;
         tool_by_name(name)
     });
-    // View offset for focusing/centering (must exist before handlers)
-    let canvas_offset: Signal<(f64, f64)> = use_signal(|| (0.0, 0.0));
 
-    // Dioxus-native keyboard shortcuts (Desktop & Web)
+    let mut last_mouse_position: Signal<ClientPoint> = use_signal(|| ClientPoint::default());
+
     let onkeydown_canvas = {
-        let mut store = store.clone();
-        let mut active_tool = active_tool.clone();
-        let mut canvas_offset_ref = canvas_offset.clone();
         move |e: KeyboardEvent| {
-            // First handle global shortcuts
+            let m = e.modifiers();
             match e.key() {
                 Key::Escape => {
                     store.write().clear_selection();
                 }
-                Key::Character(k) if (k.eq_ignore_ascii_case("a")) && (e.modifiers().ctrl() || e.modifiers().meta()) => {
-                    // Select all
+                Key::Character(k) if (k.eq_ignore_ascii_case("a")) && (m.ctrl() || m.meta()) => {
                     e.prevent_default();
                     store.write().select_all();
                 }
-                Key::Character(k) if (k.eq_ignore_ascii_case("g")) && (e.modifiers().ctrl() || e.modifiers().meta()) => {
-                    // Group selected nodes and groups
+                Key::Character(k) if (k.eq_ignore_ascii_case("g")) && (m.ctrl() || m.meta()) => {
                     e.prevent_default();
-                    store.write().group_selected(None);
+                    store.write().group_selected(&"Group".to_string());
                 }
                 Key::Character(k) if k.eq_ignore_ascii_case("f") => {
-                    // Focus: center view on average position of selected nodes
+                    e.prevent_default();
+
                     let s = store.read();
                     if s.selected.is_empty() { return; }
-                    let mut sum_x = 0.0f64; let mut sum_y = 0.0f64; let mut count = 0.0f64;
+
+                    let mut sum_x = 0.0f64;
+                    let mut sum_y = 0.0f64;
+                    let mut count = 0.0f64;
+                    
                     for id in s.selected.iter() {
                         if let Some(n) = s.network.neurons.iter().find(|n| &n.id == id) {
-                            let r = 20.0;
-                            sum_x += n.position.0 + r; sum_y += n.position.1 + r; count += 1.0;
+                            sum_x += n.position.0; sum_y += n.position.1; 
+                            count += 1.0;
                         }
                     }
+                    
+                    drop(s);
+
                     if count > 0.0 {
                         let avg_x = sum_x / count;
                         let avg_y = sum_y / count;
-                        // Approximate canvas center (account for sidebars/topbar). If actual size is unknown, use a sensible default 800x600 viewport
-                        let canvas_center_x = 220.0 + 400.0; // left sidebar + half of 800
-                        let canvas_center_y = 56.0 + 300.0;  // topbar + half of 600
-                        let dx = canvas_center_x - avg_x;
-                        let dy = canvas_center_y - avg_y;
-                        canvas_offset_ref.set((dx, dy));
+
+                        store.write().pan_to((avg_x, avg_y), true);
                     }
+
                 }
                 Key::Character(k) => {
                     let ku = k.to_uppercase();
                     match ku.as_str() {
                         "S" => { let mut s = store.write(); s.set_tool(ViewType::EDIT, "select"); active_tool.set(tool_by_name("select")); },
                         "A" => { let mut s = store.write(); s.set_tool(ViewType::EDIT, "add"); active_tool.set(tool_by_name("add")); },
-                        "E" => { let mut s = store.write(); s.set_tool(ViewType::EDIT, "edge"); active_tool.set(tool_by_name("edge")); },
-                        "R" => { let mut s = store.write(); s.set_tool(ViewType::EDIT, "region"); active_tool.set(tool_by_name("region")); },
+                        "E" => { let mut s = store.write(); s.set_tool(ViewType::EDIT, "edge"); active_tool.set(tool_by_name("edge")); }
                         _ => {}
                     }
                 }
@@ -76,15 +74,9 @@ pub fn EditView() -> Element {
         }
     };
 
-    // Classes moved to Tailwind CSS (tailwind.css)
-    let canvas_class = "nn-canvas";
-    let toolbar_class = "nn-toolbar";
-    let sidebar_base_class = "nn-sidebar";
+    let mut is_dragging = use_signal(|| false);
+    let mut is_panning = use_signal(|| false);
 
-    // Drag state for tools
-    let is_dragging = use_signal(|| false);
-
-    // Precompute node centers for edge rendering
     let node_centers: std::collections::HashMap<i64, (f64, f64)> = {
         let s = store.read();
         let mut map = std::collections::HashMap::new();
@@ -97,59 +89,59 @@ pub fn EditView() -> Element {
         map
     };
 
-    // canvas_offset already defined above
-
     let onclick_canvas = {
-        let tool_ctx = tool_ctx.clone();
-        let mut active_tool = active_tool.clone();
+        let mut ctx = tool_ctx.clone();
         move |evt: MouseEvent| {
-            let mut ctx = tool_ctx.clone();
             active_tool.write().on_canvas_click(&mut ctx, &evt);
         }
     };
     let onmousedown_canvas = {
-        let tool_ctx = tool_ctx.clone();
-        let mut is_dragging = is_dragging.clone();
-        let mut active_tool = active_tool.clone();
+        let mut ctx = tool_ctx.clone();
         move |evt: MouseEvent| {
-            is_dragging.set(true);
-            let mut ctx = tool_ctx.clone();
-            active_tool.write().on_drag_start(&mut ctx, &evt);
+            let m = evt.modifiers();
+            if m.alt() {
+                is_panning.set(true);
+            } else {
+                is_dragging.set(true);
+                active_tool.write().on_drag_start(&mut ctx, &evt);
+            }
         }
     };
     let onmousemove_canvas = {
-        let tool_ctx = tool_ctx.clone();
-        let is_dragging = is_dragging.clone();
-        let mut active_tool = active_tool.clone();
+        let mut ctx = tool_ctx.clone();
         move |evt: MouseEvent| {
+            let coords = evt.client_coordinates();
+            
             if *is_dragging.read() {
-                let mut ctx = tool_ctx.clone();
                 active_tool.write().on_drag(&mut ctx, &evt);
+            } else if *is_panning.read() {
+                let delta = coords - *last_mouse_position.read();
+                let current_offset = store.read().canvas_offset.clone();
+                let new_offset = (current_offset.0 + delta.x, current_offset.1 + delta.y);
+                store.write().canvas_offset = new_offset;
             }
+
+            last_mouse_position.set(coords);
         }
     };
     let onmouseup_canvas = {
-        let tool_ctx = tool_ctx.clone();
-        let mut is_dragging = is_dragging.clone();
-        let mut active_tool = active_tool.clone();
+        let mut ctx = tool_ctx.clone();
         move |evt: MouseEvent| {
             if *is_dragging.read() {
-                let mut ctx = tool_ctx.clone();
                 active_tool.write().on_drag_end(&mut ctx, &evt);
                 is_dragging.set(false);
+            } else if *is_panning.read() {
+                is_panning.set(false);
             }
         }
     };
-    
-    fn update_active_tool() {
-        
-    }
 
     rsx! {
-        div { class: canvas_class, tabindex: 0, onkeydown: onkeydown_canvas, onclick: onclick_canvas, onmousedown: onmousedown_canvas, onmousemove: onmousemove_canvas, onmouseup: onmouseup_canvas,
+        div { class: "nn-canvas", tabindex: 0, onkeydown: onkeydown_canvas, onclick: onclick_canvas, onmousedown: onmousedown_canvas, onmousemove: onmousemove_canvas, onmouseup: onmouseup_canvas,
             {
-                let (ox, oy) = *canvas_offset.read();
+                let (ox, oy) = store.read().canvas_offset;
                 let layer_style = format!("position: absolute; inset: 0; transform: translate({ox}px, {oy}px);");
+
                 rsx! {
                     div { style: layer_style,
                         // Edge rendering (behind nodes)
@@ -161,31 +153,32 @@ pub fn EditView() -> Element {
                             }
                         }
                         for n in store.read().network.neurons.iter() {
-                            RenderNode { node: n.clone(), store: store.clone(), active_tool: active_tool.clone(), is_dragging: is_dragging.clone() }
+                            RenderNode { neuron: n.clone(), store: store, active_tool: active_tool, is_dragging: is_dragging }
                         }
-                        // AddTool selection box overlay
-                        if let Some((x, y, w, h)) = active_tool.read().select_rect() {
-                            div { class: "nn-selectbox", style: format!("position: absolute; left: {x}px; top: {y}px; width: {w}px; height: {h}px;") }
+
+                        for g in store.read().network.groups.iter() {
+                            RenderGroup { group: g.clone(), store: store }
+                        }
+
+                        if let Some(r) = active_tool.read().select_rect() {
+                            div { class: "nn-selectbox", style: format!("position: absolute; left: {0}px; top: {1}px; width: {2}px; height: {3}px;", r.left, r.top, r.width(), r.height()) }
                         }
                     }
                 }
             }
         }
 
-        // Toolbar
-        div { class: toolbar_class,
-            ToolButton { label: "SEL [S]", active: &*active_tool.read().name() == "select", onclick: move |e| { store.write().set_tool(ViewType::EDIT, "select"); active_tool.set(tool_by_name("select")); } }
-            ToolButton { label: "ADD [A]", active: &*active_tool.read().name() == "add", onclick: move |e| { store.write().set_tool(ViewType::EDIT, "add"); active_tool.set(tool_by_name("add")); } }
-            ToolButton { label: "EDG [E]", active: &*active_tool.read().name() == "edge", onclick: move |e| { store.write().set_tool(ViewType::EDIT, "edge"); active_tool.set(tool_by_name("edge")); } }
-            ToolButton { label: "REG [R]", active: &*active_tool.read().name() == "region", onclick: move |e| { store.write().set_tool(ViewType::EDIT, "region"); active_tool.set(tool_by_name("region")); } }
+        div { class: "nn-toolbar",
+            ToolButton { label: "SEL [S]", active: &*active_tool.read().name() == "select", onclick: move |_| { store.write().set_tool(ViewType::EDIT, "select"); active_tool.set(tool_by_name("select")); } }
+            ToolButton { label: "ADD [A]", active: &*active_tool.read().name() == "add", onclick: move |_| { store.write().set_tool(ViewType::EDIT, "add"); active_tool.set(tool_by_name("add")); } }
+            ToolButton { label: "EDG [E]", active: &*active_tool.read().name() == "edge", onclick: move |_| { store.write().set_tool(ViewType::EDIT, "edge"); active_tool.set(tool_by_name("edge")); } }
         }
 
-        // Sidebars
         {
-            let left_sidebar_class = format!("{} nn-sidebar-left", sidebar_base_class);
-            let right_sidebar_class = format!("{} nn-sidebar-right", sidebar_base_class);
+            let left_sidebar_class = format!("{} nn-sidebar-left", "nn-sidebar");
+            let right_sidebar_class = format!("{} nn-sidebar-right", "nn-sidebar");
+
             rsx! {
-                // Explorer on the left, Properties on the right
                 aside { class: left_sidebar_class, Explorer {} }
                 aside { class: right_sidebar_class, Properties {} }
             }
@@ -205,36 +198,32 @@ fn ToolButton(label: String, active: bool, onclick: EventHandler<MouseEvent>) ->
 
 #[component]
 fn RenderNode(
-    node: crate::state::Neuron,
-    store: Signal<crate::state::AppStore>,
+    neuron: Neuron,
+    store: Signal<AppStore>,
     active_tool: Signal<Box<dyn crate::tools::Tool>>,
     is_dragging: Signal<bool>,
 ) -> Element {
     let radius = 20.0;
-    let selected = store.read().selected.iter().any(|sid| sid == &node.id);
-    let node_id = node.id;
-    let left = node.position.0;
-    let top = node.position.1;
-    let node_style = format!("position: absolute; left: {left}px; top: {top}px;");
-    // Clone node for use in multiple move closures
-    let node_for_down = node.clone();
-    let node_for_click = node.clone();
+    let selected = store.read().selected.iter().any(|sid| sid == &neuron.id);
+    let left = neuron.position.0;
+    let top = neuron.position.1;
+    let node_style = format!("position: absolute; left: {left}px; top: {top}px");
+
+    let node_for_down = neuron.clone();
+    let node_for_click = neuron.clone();
+
     rsx! {
         div { style: node_style, class: "nn-select-none",
             onmousedown: move |e| {
-                // Start node drag; prevent canvas drag-start from firing first
                 e.stop_propagation();
                 is_dragging.set(true);
-                let this_node = crate::state::Neuron { id: node_id, ..node_for_down.clone() };
-                let mut tool_ctx2 = ToolContext { store: store.clone() };
-                active_tool.write().on_node_drag_start(&mut tool_ctx2, &this_node, &e);
+                let mut tool_ctx = ToolContext { store };
+                active_tool.write().on_node_drag_start(&mut tool_ctx, &node_for_down, &e);
             },
             onclick: move |e| {
                 e.stop_propagation();
-                // Call tool-defined node click on the active tool instance
-                let this_node = crate::state::Neuron { id: node_id, ..node_for_click.clone() };
-                let mut tool_ctx2 = ToolContext { store: store.clone() };
-                active_tool.write().on_node_click(&mut tool_ctx2, &this_node, &e);
+                let mut tool_ctx = ToolContext { store };
+                active_tool.write().on_node_click(&mut tool_ctx, &node_for_click, &e);
             },
             CircleNode { radius, selected }
         }
@@ -242,61 +231,56 @@ fn RenderNode(
 }
 
 #[component]
-fn AddPopulationModal(store: Signal<AppStore>, active_tool: Signal<Box<dyn crate::tools::Tool>>, rect: (f64, f64, f64, f64)) -> Element {
+fn RenderGroup(group: Group, store: Signal<AppStore>) -> Element {
+    let (x, y, w, h) = group.rect.as_tuple_wh();
+    let hex = group.color.hex();
+    let group_style = format!("position: absolute; left: {x}px; top: {y}px; width: {w}px; height: {h}px; background-color: {hex};");
+
+    rsx! {
+        div { style: group_style,
+
+        }
+    }
+}
+
+#[component]
+fn AddPopulationModal(store: Signal<AppStore>, active_tool: Signal<Box<dyn crate::tools::Tool>>, rect: Rect) -> Element {
     let mut name = use_signal(|| String::from("Population"));
     let mut arrangement = use_signal(|| String::from("Poisson"));
     let mut count = use_signal(|| String::from("10"));
 
     let on_cancel = {
-        let mut active_tool = active_tool.clone();
         move |_| {
             active_tool.write().clear_request();
         }
     };
 
-    let on_add = {
-        let mut store = store.clone();
-        let mut active_tool = active_tool.clone();
-        let name = name.clone();
-        let arrangement = arrangement.clone();
-        let count = count.clone();
-        move |_| {
+    let add_population = {
+        move || {
             let name = name.read().clone();
             let arrangement = arrangement.read().clone();
             let count_val: usize = count.read().parse().unwrap_or(0);
-            if count_val == 0 { active_tool.write().clear_request(); return; }
+            if count_val == 0 { let mut at = active_tool.clone(); at.write().clear_request(); return; }
 
-            let mut store_signal = store.clone();
-            let mut active_tool2 = active_tool.clone();
-            let rect_local = rect;
+            let rect = rect.clone();
 
             spawn(async move {
-                let (x, y, w, h) = rect_local;
-                // Simple LCG for pseudo-random without external deps
-                let mut seed: u64 = 0x853c49e6748fea9b;
-                let mut next_rand = || {
-                    seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
-                    ((seed >> 33) as f64) / ((1u64 << 31) as f64)
-                };
+                let (x, y, w, h) = rect.as_tuple_wh();
 
-                // Compute grid dims for grid arrangement
                 let grid_cols = (count_val as f64).sqrt().ceil() as usize;
                 let grid_rows = ((count_val + grid_cols - 1) / grid_cols).max(1);
                 let cell_w = if grid_cols > 0 { w / grid_cols as f64 } else { w };
                 let cell_h = if grid_rows > 0 { h / grid_rows as f64 } else { h };
                 let radius = 20.0;
-
-                // Create a group for this population, named after the population
-                let group_id = {
-                    let mut s = store_signal.write();
-                    let next_id = s.network.groups.iter().map(|g| g.id).max().unwrap_or(0) + 1;
-                    s.network.groups.push(crate::state::Group {
-                        id: next_id,
-                        name: name.clone(),
-                        parent: 0,
-                        children: vec![],
-                    });
-                    next_id
+                
+                let mut group = Group {
+                    id: store.read().network.get_next_group_id(),
+                    name: name.clone(),
+                    parent: 0,
+                    neurons: vec![],
+                    groups: vec![],
+                    rect,
+                    color: Color::default()
                 };
 
                 for i in 0..count_val {
@@ -309,50 +293,70 @@ fn AddPopulationModal(store: Signal<AppStore>, active_tool: Signal<Box<dyn crate
                             (cx - radius, cy - radius)
                         }
                         "Gaussian" => {
-                            // Box-Muller using our LCG
-                            let u1 = (next_rand().max(1e-6)).min(0.999999);
-                            let u2 = next_rand();
-                            let z0 = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos();
-                            let z1 = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).sin();
+                            let u1 = rand::random::<f64>().max(1e-6).min(0.999999);
+                            let u2 = rand::random::<f64>();
+                            let _ln = u1.ln();
+                            let z0 = (-2.0 * u1).sqrt() * (2.0 * std::f64::consts::PI * u2).cos();
+                            let z1 = (-2.0 * u1).sqrt() * (2.0 * std::f64::consts::PI * u2).sin();
                             let cx = x + w * 0.5 + z0 * (w * 0.2);
                             let cy = y + h * 0.5 + z1 * (h * 0.2);
-                            (cx.clamp(x, x + w) - radius, cy.clamp(y, y + h) - radius)
+                            (cx.clamp(x, x + w), cy.clamp(y, y + h))
                         }
                         "Poisson" | "Random" | _ => {
-                            let rx = x + next_rand() * w;
-                            let ry = y + next_rand() * h;
+                            let rx = x + rand::random::<f64>() * w;
+                            let ry = y + rand::random::<f64>() * h;
                             (rx - radius, ry - radius)
                         }
                     };
 
-                    let mut s = store_signal.write();
+                    let mut s = store.write();
                     let kind = NeuronModelKind::default();
                     let state_index = s.get_next_state_index(&kind);
-                    let id = s.network.neurons.len() as i64;
+                    let id = s.network.get_next_neuron_id();
 
                     s.push_neuron(Neuron {
-                        id: id,
+                        id,
                         model: kind,
                         state_index,
                         position: (px, py),
-                        parent: group_id,
+                        parent: group.id
                     });
 
-                    if let Some(gr) = s.network.groups.iter_mut().find(|g| g.id == group_id) {
-                        gr.children.push(id);
-                    }
+                    group.neurons.push(id);
                 }
 
-                active_tool2.write().clear_request();
+                store.write().network.groups.push(group);
+                active_tool.write().clear_request();
             });
         }
     };
 
+    let on_add = {
+        let add = add_population.clone();
+
+        move || {
+            add();
+        }
+    };
+
+    let on_keydown_modal = {
+        let add = add_population.clone();
+
+        move |e: KeyboardEvent| {
+            if e.key() == Key::Escape {
+                e.stop_propagation();
+                e.prevent_default();
+                active_tool.write().clear_request();
+            } else if e.key() == Key::Enter {
+                e.stop_propagation();
+                add();
+            }
+        }
+    };
+
     rsx! {
-        // Backdrop
         div { class: "nn-modal-backdrop", onclick: on_cancel.clone() }
-        // Modal
-        div { class: "nn-modal",
+        div { class: "nn-modal", onkeydown: on_keydown_modal,
             h3 { class: "text-lg font-semibold mb-2", "Add Population" }
             div { class: "mb-2",
                 label { class: "block mb-1 text-sm", "Name" }
@@ -386,7 +390,7 @@ fn AddPopulationModal(store: Signal<AppStore>, active_tool: Signal<Box<dyn crate
             }
             div { class: "flex justify-end gap-2",
                 button { class: "nn-toolbtn", onclick: on_cancel, "Cancel" }
-                button { class: "nn-toolbtn nn-toolbtn--active", onclick: on_add, "Add" }
+                button { class: "nn-toolbtn nn-toolbtn--active", onclick: move |_| on_add(), "Add" }
             }
         }
     }
