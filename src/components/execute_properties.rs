@@ -77,11 +77,13 @@ pub fn ExecuteProperties() -> Element {
             if unique_model_count > 1 {
                 TooltipIndicator { kind: TooltipKind::Warning, text: "Multiple model kinds selected. State editing disabled." }
             }
-            ReadonlyStringRow { label: "ID", value: id_string.clone() }
-            ReadonlyStringRow { label: "Model", value: model_name_string.clone() }
+            if unique_model_count != 0 {
+                ReadonlyStringRow { label: "ID", value: id_string.clone() }
+                ReadonlyStringRow { label: "Model", value: model_name_string.clone() }
 
-            if let Some((voltage, oninput_voltage)) = editor {
-                NumberRow { label: "Membrane Potential (mV)", value: voltage, oninput: oninput_voltage }
+                if let Some((voltage, oninput_voltage)) = editor {
+                    NumberRow { label: "Membrane Potential (mV)", value: voltage, oninput: oninput_voltage }
+                }
             }
         }
     }

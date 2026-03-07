@@ -2,6 +2,7 @@ use dioxus::html::geometry::ClientPoint;
 use dioxus::prelude::*;
 use crate::state::{AppStore, ViewType, Neuron, Color, Group, Rect};
 use crate::components::explorer::Explorer;
+use crate::components::canvas::GlobalCanvas;
 use crate::components::properties::Properties;
 use crate::components::circle::CircleNode;
 use crate::models::NeuronModelKind;
@@ -101,6 +102,8 @@ pub fn EditView() -> Element {
             let m = evt.modifiers();
             if m.alt() {
                 is_panning.set(true);
+                // Interrupt any ongoing pan animation when manual panning starts
+                store.write().pan_anim = None;
             } else {
                 is_dragging.set(true);
                 active_tool.write().on_drag_start(&mut ctx, &evt);
@@ -137,34 +140,31 @@ pub fn EditView() -> Element {
     };
 
     rsx! {
-        div { class: "nn-canvas", tabindex: 0, onkeydown: onkeydown_canvas, onclick: onclick_canvas, onmousedown: onmousedown_canvas, onmousemove: onmousemove_canvas, onmouseup: onmouseup_canvas,
-            {
-                let (ox, oy) = store.read().canvas_offset;
-                let layer_style = format!("position: absolute; inset: 0; transform: translate({ox}px, {oy}px);");
+        GlobalCanvas {
+            onkeydown: onkeydown_canvas,
+            onclick: onclick_canvas,
+            onmousedown: onmousedown_canvas,
+            onmousemove: onmousemove_canvas,
+            onmouseup: onmouseup_canvas,
 
-                rsx! {
-                    div { style: layer_style,
-                        // Edge rendering (behind nodes)
-                        svg { style: "position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;",
-                            for e in store.read().network.edges.iter() {
-                                if let (Some(&(x1, y1)), Some(&(x2, y2))) = (node_centers.get(&e.source), node_centers.get(&e.target)) {
-                                    line { x1: "{x1}", y1: "{y1}", x2: "{x2}", y2: "{y2}", stroke: "#aab", stroke_width: "2" }
-                                }
-                            }
-                        }
-                        for n in store.read().network.neurons.iter() {
-                            RenderNode { neuron: n.clone(), store: store, active_tool: active_tool, is_dragging: is_dragging }
-                        }
-
-                        for g in store.read().network.groups.iter() {
-                            RenderGroup { group: g.clone(), store: store }
-                        }
-
-                        if let Some(r) = active_tool.read().select_rect() {
-                            div { class: "nn-selectbox", style: format!("position: absolute; left: {0}px; top: {1}px; width: {2}px; height: {3}px;", r.left, r.top, r.width(), r.height()) }
-                        }
+            // Edge rendering (behind nodes)
+            svg { style: "position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;",
+                for e in store.read().network.edges.iter() {
+                    if let (Some(&(x1, y1)), Some(&(x2, y2))) = (node_centers.get(&e.source), node_centers.get(&e.target)) {
+                        line { x1: "{x1}", y1: "{y1}", x2: "{x2}", y2: "{y2}", stroke: "#aab", stroke_width: "2" }
                     }
                 }
+            }
+            for n in store.read().network.neurons.iter() {
+                RenderNode { neuron: n.clone(), store: store, active_tool: active_tool, is_dragging: is_dragging }
+            }
+
+            for g in store.read().network.groups.iter() {
+                RenderGroup { group: g.clone(), store: store }
+            }
+
+            if let Some(r) = active_tool.read().select_rect() {
+                div { class: "nn-selectbox", style: format!("position: absolute; left: {0}px; top: {1}px; width: {2}px; height: {3}px;", r.left, r.top, r.width(), r.height()) }
             }
         }
 

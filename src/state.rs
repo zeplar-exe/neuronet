@@ -1,7 +1,6 @@
-use crate::models::{NeuronModelKind};
+use crate::models::NeuronModelKind;
 use crate::settings::{AppSettings, SimulationSettings};
 use crate::util::variant_eq;
-
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum ViewType {
@@ -26,7 +25,7 @@ pub struct Neuron {
 }
 
 #[derive(Clone, Default, PartialEq)]
-pub struct Edge {
+pub struct Edge { 
     pub id: EdgeId,
     pub source: NeuronId,
     pub target: NeuronId
@@ -230,7 +229,37 @@ impl Network {
     }
 
     pub fn remove_group(&mut self, id: GroupId) {
+        let mut groups_to_delete = vec![id];
+        let mut neurons_to_delete = vec![];
+        let mut idx = 0;
 
+        while idx < groups_to_delete.len() {
+            let current_group_id = groups_to_delete[idx];
+
+            neurons_to_delete.extend(
+                self.groups.iter()
+                    .find(|g| g.id == current_group_id)
+                    .map_or(vec![], |g| g.neurons.clone())
+            );
+
+            groups_to_delete.extend(
+                self.groups.iter()
+                    .filter(|g| g.parent == current_group_id)
+                    .map(|g| g.id)
+            );
+
+            idx += 1;
+        }
+
+        for neuron_id in &neurons_to_delete {
+            self.remove_neuron(*neuron_id);
+        }
+
+        self.groups.retain(|g| !groups_to_delete.contains(&g.id));
+
+        for group in self.groups.iter_mut() {
+            group.groups.retain(|&sub_group_id| !groups_to_delete.contains(&sub_group_id));
+        }
     }
 
     pub fn get_neuron(&self, id: NeuronId) -> &Neuron {
@@ -279,6 +308,20 @@ impl Default for ViewState {
 }
 
 #[derive(Clone)]
+pub struct PanAnim {
+    pub start_offset: Position,
+    pub target_offset: Position,
+    pub start_ms: f64,
+    pub duration_ms: f64,
+}
+
+impl PanAnim {
+    pub fn new(start_offset: Position, target_offset: Position, duration_ms: f64, start_ms: f64) -> Self {
+        Self { start_offset, target_offset, start_ms, duration_ms }
+    }
+}
+
+#[derive(Clone)]
 pub struct AppStore {
     pub current_view: ViewType,
     pub network: Network,
@@ -288,6 +331,9 @@ pub struct AppStore {
     pub execute_view: ViewState,
     pub canvas_offset: Position,
     pub canvas_zoom: f64,
+    pub pan_anim: Option<PanAnim>,
+    // Monotonic app time in milliseconds, advanced by the render loop (RAF) on web
+    pub app_time_ms: f64,
     pub app_settings: AppSettings,
     pub sim_settings: SimulationSettings
 }
@@ -303,6 +349,8 @@ impl Default for AppStore {
             execute_view: ViewState { selected_tool: "select" },
             canvas_offset: (0.0, 0.0),
             canvas_zoom: 1.0,
+            pan_anim: None,
+            app_time_ms: 0.0,
             app_settings: AppSettings::default(),
             sim_settings: SimulationSettings::default(),
         }
@@ -380,8 +428,14 @@ impl AppStore {
         next_id
     }
     pub fn pan_to(&mut self, position: Position, animate: bool) {
-        let _ = animate;
-        self.canvas_offset = (-position.0, -position.1);
+        let target_offset = (-position.0, -position.1);
+        if animate {
+            let start_offset = self.canvas_offset;
+            self.pan_anim = Some(PanAnim::new(start_offset, target_offset, 350.0, self.app_time_ms));
+        } else {
+            self.canvas_offset = target_offset;
+            self.pan_anim = None;
+        }
     }
     pub fn set_tool(&mut self, view: ViewType, tool: &'static str) {
         match view {
