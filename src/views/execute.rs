@@ -1,15 +1,15 @@
-use dioxus::prelude::*;
-use crate::components::explorer::Explorer;
-use crate::components::execute_properties::ExecuteProperties;
 use crate::components::circle::CircleNode;
-use crate::state::{AppStore, ViewType};
+use crate::components::execute_properties::ExecuteProperties;
+use crate::components::explorer::Explorer;
+use crate::state::{AppStore, Neuron, ViewType};
 use crate::tools::{tool_by_name, ToolContext};
+use dioxus::prelude::*;
 
 #[component]
 pub fn ExecuteView() -> Element {
     let mut store = use_context::<Signal<AppStore>>();
-    let tool_ctx = ToolContext { store: store.clone() };
-    
+    let tool_ctx = ToolContext { store: store };
+
     if store.read().set_view_state(ViewType::EXECUTE).selected_tool != "select" {
         store.write().set_tool(ViewType::EXECUTE, "select");
     }
@@ -18,38 +18,33 @@ pub fn ExecuteView() -> Element {
     let is_dragging = use_signal(|| false);
 
     let onclick_canvas = {
-        let tool_ctx = tool_ctx.clone();
-        let mut active_tool = active_tool.clone();
+        let mut tool_ctx = tool_ctx.clone();
         move |evt: MouseEvent| {
-            let mut ctx = tool_ctx.clone();
-            active_tool.write().on_canvas_click(&mut ctx, &evt);
+            active_tool.write().on_canvas_click(&mut tool_ctx, &evt);
         }
     };
     let onmousedown_canvas = {
-        let tool_ctx = tool_ctx.clone();
+        let mut tool_ctx = tool_ctx.clone();
         let mut is_dragging = is_dragging.clone();
         move |evt: MouseEvent| {
             is_dragging.set(true);
-            let mut ctx = tool_ctx.clone();
-            active_tool.write().on_drag_start(&mut ctx, &evt);
+            active_tool.write().on_drag_start(&mut tool_ctx, &evt);
         }
     };
     let onmousemove_canvas = {
-        let tool_ctx = tool_ctx.clone();
+        let mut tool_ctx = tool_ctx.clone();
         move |evt: MouseEvent| {
             if is_dragging.read().to_owned() {
-                let mut ctx = tool_ctx.clone();
-                active_tool.write().on_drag(&mut ctx, &evt);
+                active_tool.write().on_drag(&mut tool_ctx, &evt);
             }
         }
     };
     let onmouseup_canvas = {
-        let tool_ctx = tool_ctx.clone();
+        let mut tool_ctx = tool_ctx.clone();
         let mut is_dragging = is_dragging.clone();
         move |evt: MouseEvent| {
             if is_dragging.read().to_owned() {
-                let mut ctx = tool_ctx.clone();
-                active_tool.write().on_drag_end(&mut ctx, &evt);
+                active_tool.write().on_drag_end(&mut tool_ctx, &evt);
                 is_dragging.set(false);
             }
         }
@@ -84,36 +79,29 @@ pub fn ExecuteView() -> Element {
 
 #[component]
 fn RenderNode(
-    node: crate::state::Neuron,
-    store: Signal<crate::state::AppStore>,
+    node: Neuron,
+    store: Signal<AppStore>,
     active_tool: Signal<Box<dyn crate::tools::Tool>>,
     is_dragging: Signal<bool>,
 ) -> Element {
     let radius = 20.0;
     let selected = store.read().selected.iter().any(|sid| sid == &node.id);
-    let node_id = node.id;
     let left = node.position.0;
     let top = node.position.1;
     let node_style = format!("position: absolute; left: {left}px; top: {top}px;");
-    
-    // Clone node for use in multiple move closures
-    let node_for_down = node.clone();
-    let node_for_click = node.clone();
-    
+
     rsx! {
         div { style: node_style, class: "nn-select-none",
             onmousedown: move |e| {
                 e.stop_propagation();
                 is_dragging.set(true);
-                let this_node = crate::state::Neuron { id: node_id, ..node_for_down.clone() };
-                let mut tool_ctx2 = ToolContext { store: store.clone() };
-                active_tool.write().on_node_drag_start(&mut tool_ctx2, &this_node, &e);
+                let mut tool_ctx = ToolContext { store };
+                active_tool.write().on_node_drag_start(&mut tool_ctx, &node.id, &e);
             },
             onclick: move |e| {
                 e.stop_propagation();
-                let this_node = crate::state::Neuron { id: node_id, ..node_for_click.clone() };
-                let mut tool_ctx2 = ToolContext { store: store.clone() };
-                active_tool.write().on_node_click(&mut tool_ctx2, &this_node, &e);
+                let mut tool_ctx = ToolContext { store };
+                active_tool.write().on_node_click(&mut tool_ctx, &node.id, &e);
             },
             CircleNode { radius, selected }
         }

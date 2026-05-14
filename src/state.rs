@@ -1,6 +1,26 @@
+use std::collections::HashSet;
+
+use generational_arena::{Arena, Index};
+
+use crate::gen::generate_neuron_name;
 use crate::models::NeuronModelKind;
 use crate::settings::{AppSettings, SimulationSettings};
 use crate::util::variant_eq;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ContextMenuTarget {
+    Neuron(NeuronId),
+    Group(GroupId),
+    Canvas,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ContextMenuState {
+    pub x: f64,
+    pub y: f64,
+    pub target: ContextMenuTarget,
+    pub name: Option<String>,
+}
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum ViewType {
@@ -8,27 +28,28 @@ pub enum ViewType {
     EXECUTE,
 }
 
-type NeuronId = i64;
-type GroupId = i64;
-type EdgeId = i64;
-type StateIndex = i64;
-type Position = (f64, f64);
-type Voltage = f64;
+pub type NeuronId = Index;
+pub type GroupId = Index;
+pub type SynapseId = Index;
+pub type StateIndex = usize;
+pub type Position = (f64, f64);
+pub type Voltage = f64;
 
 #[derive(Clone, PartialEq)]
 pub struct Neuron {
     pub id: NeuronId,
+    pub name: String,
     pub model: NeuronModelKind,
     pub state_index: StateIndex,
     pub position: Position,
-    pub parent: GroupId
+    pub parent: Option<GroupId>,
 }
 
-#[derive(Clone, Default, PartialEq)]
-pub struct Edge { 
-    pub id: EdgeId,
+#[derive(Clone, PartialEq)]
+pub struct Synapse {
+    pub id: SynapseId,
     pub source: NeuronId,
-    pub target: NeuronId
+    pub target: NeuronId,
 }
 
 #[derive(Clone, PartialEq)]
@@ -41,12 +62,19 @@ pub struct Color {
 
 impl Default for Color {
     fn default() -> Self {
-        Color { red: 255u8, green: 255u8, blue: 255u8, alpha: 255 }
+        Color {
+            red: 255u8,
+            green: 255u8,
+            blue: 255u8,
+            alpha: 255,
+        }
     }
 }
 
 impl Color {
-    pub fn hex(&self) -> String { format!("#{:02X?}", [self.red, self.green, self.blue, self.alpha]) }
+    pub fn hex(&self) -> String {
+        format!("#{:02X?}", [self.red, self.green, self.blue, self.alpha])
+    }
 }
 
 #[derive(Clone, Default, PartialEq, Debug)]
@@ -63,7 +91,7 @@ impl Rect {
             top: top_left.1,
             left: top_left.0,
             bottom: bottom_right.1,
-            right: bottom_right.0
+            right: bottom_right.0,
         }
     }
 
@@ -72,12 +100,17 @@ impl Rect {
             top: position.1,
             left: position.0,
             bottom: position.1 + size.1,
-            right: position.0 + size.0
+            right: position.0 + size.0,
         }
     }
 
     pub fn from_dimensions_f(left: f64, top: f64, width: f64, height: f64) -> Rect {
-        Rect { left, top, bottom: top + height, right: left + width }
+        Rect {
+            left,
+            top,
+            bottom: top + height,
+            right: left + width,
+        }
     }
 
     pub fn area(&self) -> f64 {
@@ -101,13 +134,13 @@ impl Rect {
     }
 }
 
-#[derive(Clone, Default, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Group {
     pub id: GroupId,
     pub name: String,
-    pub parent: GroupId,
-    pub neurons: Vec<i64>,
-    pub groups: Vec<i64>,
+    pub parent: Option<GroupId>,
+    pub neurons: Vec<NeuronId>,
+    pub groups: Vec<GroupId>,
     pub rect: Rect,
     pub color: Color,
 }
@@ -120,8 +153,9 @@ pub struct IntegrateFireState {
     pub threshold: Vec<Voltage>,
     pub minimum_voltage: Vec<Voltage>,
     pub maximum_voltage: Vec<Voltage>,
-    pub leaky: Vec<bool>,
     pub leak_constant: Vec<Voltage>,
+
+    pub state_to_meta: Vec<Index>,
 }
 
 #[derive(Clone, Default)]
@@ -131,17 +165,15 @@ pub struct Executor {
 }
 
 impl Executor {
-    pub fn step(&mut self, dt: f64, neurons: &[Neuron], edges: &[Edge]) {
-
-    }
+    pub fn step(&mut self, dt: f64, neurons: &[Neuron], edges: &[Synapse]) {}
 }
 
 #[derive(Clone, Default)]
 pub struct Network {
     pub executor: Executor,
-    pub neurons: Vec<Neuron>,
-    pub edges: Vec<Edge>,
-    pub groups: Vec<Group>,
+    pub neurons: Arena<Neuron>,
+    pub synapses: Arena<Synapse>,
+    pub groups: Arena<Group>,
 }
 
 pub struct IntegrateFireParams {
@@ -153,78 +185,92 @@ pub struct IntegrateFireParams {
 }
 
 impl Default for IntegrateFireParams {
-    fn default() -> Self { Self {
-        strength: 30.0 as Voltage,
-        reset_potential: -70.0 as Voltage,
-        threshold: -55.0 as Voltage,
-        minimum_voltage: -100.0 as Voltage,
-        maximum_voltage: 50.0 as Voltage,
-    } }
+    fn default() -> Self {
+        Self {
+            strength: 30.0 as Voltage,
+            reset_potential: -70.0 as Voltage,
+            threshold: -55.0 as Voltage,
+            minimum_voltage: -100.0 as Voltage,
+            maximum_voltage: 50.0 as Voltage,
+        }
+    }
 }
 
 impl Network {
     pub fn get_voltage(&self, id: NeuronId) -> Voltage {
-        match &self.neurons[id as usize].model {
-            NeuronModelKind::IntegrateFire(_) => {
-                self.executor.integrate_fire.voltage[id as usize]
-            }
-            NeuronModelKind::LIF(_) => {0.0}
-            NeuronModelKind::Izhikevich(_) => {0.0}
+        let neuron = self.neurons.get(id).unwrap();
+        match &neuron.model {
+            NeuronModelKind::IntegrateFire(_) => self.executor.integrate_fire.voltage[neuron.state_index as usize],
+            NeuronModelKind::LIF(_) => 0.0,
+            NeuronModelKind::Izhikevich(_) => 0.0,
         }
     }
 
-    pub fn add_integrate_fire_neuron(&mut self, params: IntegrateFireParams, position: Position, parent: GroupId) -> NeuronId {
-        let neuron = Neuron {
-            id: self.neurons.len() as NeuronId,
-            model: NeuronModelKind::integrate_fire(),
-            state_index: self.executor.integrate_fire.voltage.len() as StateIndex,
-            position,
-            parent,
-        };
-        let id = neuron.id;
+    pub fn add_integrate_fire_neuron(
+        &mut self,
+        params: IntegrateFireParams,
+        position: Position,
+        parent: GroupId,
+    ) -> NeuronId {
+        let idx = self.neurons.insert_with(|idx| {
+            let state_index = self.executor.integrate_fire.voltage.len() as StateIndex;
+            self.executor.integrate_fire.state_to_meta.push(idx);
 
-        self.neurons.push(neuron);
+            Neuron {
+                id: idx,
+                name: generate_neuron_name(),
+                model: NeuronModelKind::integrate_fire(),
+                state_index: state_index,
+                position,
+                parent: Some(parent),
+            }
+        });
+
         self.executor.integrate_fire.voltage.push(params.reset_potential);
-        self.executor.integrate_fire.reset_potential.push(params.reset_potential);
+        self.executor
+            .integrate_fire
+            .reset_potential
+            .push(params.reset_potential);
         self.executor.integrate_fire.strength.push(params.strength);
         self.executor.integrate_fire.threshold.push(params.threshold);
-        self.executor.integrate_fire.minimum_voltage.push(params.minimum_voltage);
-        self.executor.integrate_fire.maximum_voltage.push(params.maximum_voltage);
+        self.executor
+            .integrate_fire
+            .minimum_voltage
+            .push(params.minimum_voltage);
+        self.executor
+            .integrate_fire
+            .maximum_voltage
+            .push(params.maximum_voltage);
 
-        id
+        idx
     }
 
     pub fn remove_neuron(&mut self, id: NeuronId) {
-        let model = self.neurons[id as usize].model.clone();
-        let state_index = self.neurons[id as usize].state_index;
+        let model = self.neurons[id].model.clone();
+        let state_index = self.neurons[id].state_index as usize;
 
         if variant_eq(&model, &NeuronModelKind::integrate_fire()) {
-            self.executor.integrate_fire.voltage.remove(id as usize);
-            self.executor.integrate_fire.reset_potential.remove(id as usize);
-            self.executor.integrate_fire.strength.remove(id as usize);
-            self.executor.integrate_fire.threshold.remove(id as usize);
-            self.executor.integrate_fire.minimum_voltage.remove(id as usize);
-            self.executor.integrate_fire.maximum_voltage.remove(id as usize);
-        }
+            let moved_index = self.executor.integrate_fire.state_to_meta.pop().unwrap();
+            if self.executor.integrate_fire.state_to_meta.len() > 0 {
+                let moved = self.neurons.get_mut(moved_index).unwrap();
 
-        self.neurons.remove(id as usize);
-        self.edges.retain(|e| e.source != id && e.target != id);
-
-        for g in self.groups.iter_mut() {
-            g.neurons.retain(|&cid| cid != id);
-        }
-
-        for i in (id as usize)..self.neurons.len() {
-            self.neurons[i].id -= 1;
-
-            if self.neurons[i].model == model && self.neurons[i].state_index > state_index {
-                self.neurons[i].state_index -= 1;
+                self.executor.integrate_fire.state_to_meta[state_index] = moved_index;
+                moved.state_index = state_index as StateIndex;
             }
+
+            self.executor.integrate_fire.voltage.swap_remove(state_index);
+            self.executor.integrate_fire.reset_potential.swap_remove(state_index);
+            self.executor.integrate_fire.strength.swap_remove(state_index);
+            self.executor.integrate_fire.threshold.swap_remove(state_index);
+            self.executor.integrate_fire.minimum_voltage.swap_remove(state_index);
+            self.executor.integrate_fire.maximum_voltage.swap_remove(state_index);
         }
-        
-        for e in self.edges.iter_mut() {
-            if e.source > id { e.source -= 1; }
-            if e.target > id { e.target -= 1; }
+
+        self.neurons.remove(id);
+        self.synapses.retain(|_, e| e.source != id && e.target != id);
+
+        for (_, g) in self.groups.iter_mut() {
+            g.neurons.retain(|&cid| cid != id);
         }
     }
 
@@ -235,18 +281,10 @@ impl Network {
 
         while idx < groups_to_delete.len() {
             let current_group_id = groups_to_delete[idx];
+            let group = self.groups.get(current_group_id).unwrap();
 
-            neurons_to_delete.extend(
-                self.groups.iter()
-                    .find(|g| g.id == current_group_id)
-                    .map_or(vec![], |g| g.neurons.clone())
-            );
-
-            groups_to_delete.extend(
-                self.groups.iter()
-                    .filter(|g| g.parent == current_group_id)
-                    .map(|g| g.id)
-            );
+            neurons_to_delete.extend(group.neurons.clone());
+            groups_to_delete.extend(group.groups.iter().map(|id| id.clone()));
 
             idx += 1;
         }
@@ -255,44 +293,13 @@ impl Network {
             self.remove_neuron(*neuron_id);
         }
 
-        self.groups.retain(|g| !groups_to_delete.contains(&g.id));
+        self.groups.retain(|id, _| !groups_to_delete.contains(&id));
 
-        for group in self.groups.iter_mut() {
-            group.groups.retain(|&sub_group_id| !groups_to_delete.contains(&sub_group_id));
+        for (_, group) in self.groups.iter_mut() {
+            group
+                .groups
+                .retain(|&sub_group_id| !groups_to_delete.contains(&sub_group_id));
         }
-    }
-
-    pub fn get_neuron(&self, id: NeuronId) -> &Neuron {
-        &self.neurons[id as usize]
-    }
-
-    pub fn get_edge(&self, id: EdgeId) -> &Edge {
-        &self.edges[id as usize]
-    }
-
-    pub fn get_group(&self, id: GroupId) -> &Group {
-        &self.groups.iter().find(|g| g.id == id).unwrap()
-    }
-
-    pub fn get_neuron_mut(&mut self, id: NeuronId) -> &mut Neuron {
-        &mut self.neurons[id as usize]
-    }
-
-    pub fn get_edge_mut(&mut self, id: EdgeId) -> &mut Edge {
-        &mut self.edges[id as usize]
-    }
-
-    pub fn get_group_mut(&mut self, id: GroupId) -> &mut Group {
-        let index = self.groups.iter().position(|g| g.id == id).unwrap();
-        &mut self.groups[index]
-    }
-
-    pub fn get_next_neuron_id(&self) -> NeuronId {
-        self.neurons.len() as NeuronId
-    }
-
-    pub fn get_next_group_id(&self) -> GroupId {
-        self.groups.len() as GroupId
     }
 }
 
@@ -317,7 +324,12 @@ pub struct PanAnim {
 
 impl PanAnim {
     pub fn new(start_offset: Position, target_offset: Position, duration_ms: f64, start_ms: f64) -> Self {
-        Self { start_offset, target_offset, start_ms, duration_ms }
+        Self {
+            start_offset,
+            target_offset,
+            start_ms,
+            duration_ms,
+        }
     }
 }
 
@@ -325,17 +337,17 @@ impl PanAnim {
 pub struct AppStore {
     pub current_view: ViewType,
     pub network: Network,
-    pub selected: Vec<NeuronId>,
-    pub selected_groups: Vec<GroupId>,
+    pub selected: HashSet<NeuronId>,
+    pub selected_groups: HashSet<GroupId>,
     pub edit_view: ViewState,
     pub execute_view: ViewState,
     pub canvas_offset: Position,
     pub canvas_zoom: f64,
     pub pan_anim: Option<PanAnim>,
-    // Monotonic app time in milliseconds, advanced by the render loop (RAF) on web
     pub app_time_ms: f64,
     pub app_settings: AppSettings,
-    pub sim_settings: SimulationSettings
+    pub sim_settings: SimulationSettings,
+    pub context_menu: Option<ContextMenuState>,
 }
 
 impl Default for AppStore {
@@ -343,89 +355,111 @@ impl Default for AppStore {
         Self {
             current_view: ViewType::EDIT,
             network: Network::default(),
-            selected: vec![],
-            selected_groups: vec![],
+            selected: HashSet::default(),
+            selected_groups: HashSet::default(),
             edit_view: ViewState::default(),
-            execute_view: ViewState { selected_tool: "select" },
+            execute_view: ViewState {
+                selected_tool: "select",
+            },
             canvas_offset: (0.0, 0.0),
             canvas_zoom: 1.0,
             pan_anim: None,
             app_time_ms: 0.0,
             app_settings: AppSettings::default(),
             sim_settings: SimulationSettings::default(),
+            context_menu: None,
         }
     }
 }
 
 impl AppStore {
-    pub fn get_neuron(&self, id: NeuronId) -> &Neuron {
-        &self.network.neurons[id as usize]
+    pub fn open_context_menu(&mut self, x: f64, y: f64, target: ContextMenuTarget, name: Option<String>) {
+        self.context_menu = Some(ContextMenuState { x, y, target, name });
     }
-    pub fn get_group(&self, id: GroupId) -> &Group {
-        &self.network.groups.iter().find(|g| g.id == id).unwrap()
+    pub fn close_context_menu(&mut self) {
+        self.context_menu = None;
     }
-    pub fn push_neuron(&mut self, node: Neuron) { self.network.neurons.push(node); }
     pub fn get_selected_neurons(&self) -> Vec<&Neuron> {
-        self.network.neurons.iter().filter(|n| self.selected.contains(&n.id)).collect()
+        self.network
+            .neurons
+            .iter()
+            .filter(|(id, _)| self.selected.contains(id))
+            .map(|(_, n)| n)
+            .collect()
     }
-    pub fn clear_selection(&mut self) { self.selected.clear(); self.selected_groups.clear(); }
-    pub fn select_only(&mut self, id: NeuronId) { self.selected = vec![id]; self.selected_groups.clear(); }
+    pub fn clear_selection(&mut self) {
+        self.selected.clear();
+        self.selected_groups.clear();
+    }
+    pub fn select_only(&mut self, id: NeuronId) {
+        self.selected = HashSet::from([id]);
+        self.selected_groups.clear();
+    }
     pub fn select_all(&mut self) {
-        self.selected = self.network.neurons.iter().map(|n| n.id).collect();
+        self.selected = self.network.neurons.iter().map(|(id, _)| id).collect();
     }
     pub fn toggle_selected(&mut self, id: NeuronId) {
-        if let Some(idx) = self.selected.iter().position(|x| *x == id) {
-            self.selected.remove(idx);
-        } else {
-            self.selected.push(id);
+        if !self.selected.remove(&id) {
+            self.selected.insert(id);
         }
     }
     pub fn ensure_selected(&mut self, id: NeuronId) {
         if !self.selected.iter().any(|x| *x == id) {
-            self.selected.push(id);
+            self.selected.insert(id);
         }
     }
-    pub fn select_group_only(&mut self, id: NeuronId) { self.selected_groups = vec![id]; self.selected.clear(); }
+    pub fn select_group_only(&mut self, id: NeuronId) {
+        self.selected_groups = HashSet::default();
+        self.selected.clear();
+    }
     pub fn toggle_group_selected(&mut self, id: GroupId) {
-        if let Some(idx) = self.selected_groups.iter().position(|x| *x == id) {
-            self.selected_groups.remove(idx);
-
-            for nid in self.network.groups.iter().find(|g| g.id == id).unwrap().neurons.iter() {
+        if self.selected_groups.remove(&id) {
+            for nid in self.network.groups[id].neurons.iter() {
                 self.selected.retain(|&sid| sid != *nid);
             }
-            for gid in self.network.groups.iter().find(|g| g.id == id).unwrap().groups.iter() {
+            for gid in self.network.groups[id].groups.iter() {
                 self.selected_groups.retain(|&sgid| sgid != *gid);
             }
         } else {
-            self.selected_groups.push(id);
+            self.selected_groups.insert(id);
 
-            for nid in self.network.groups.iter().find(|g| g.id == id).unwrap().neurons.iter() {
-                self.selected.push(*nid as usize as NeuronId);
+            for nid in self.network.groups[id].neurons.iter() {
+                self.selected.insert(*nid);
             }
-            for gid in self.network.groups.iter().find(|g| g.id == id).unwrap().groups.iter() {
-                self.selected_groups.push(*gid as usize as GroupId);
+            for gid in self.network.groups[id].groups.iter() {
+                self.selected_groups.insert(*gid);
             }
         }
     }
     pub fn ensure_group_selected(&mut self, id: GroupId) {
         if !self.selected_groups.iter().any(|x| *x == id) {
-            self.selected_groups.push(id);
+            self.selected_groups.insert(id);
         }
     }
     pub fn has_edge(&self, source: NeuronId, target: NeuronId) -> bool {
-        self.network.edges.iter().any(|e| e.source == source && e.target == target)
+        self.network
+            .synapses
+            .iter()
+            .any(|(_, e)| e.source == source && e.target == target)
     }
-    pub fn push_edge(&mut self, source: NeuronId, target: NeuronId) -> EdgeId {
+    pub fn push_edge(&mut self, source: NeuronId, target: NeuronId) -> SynapseId {
         if source == target {
-            return 0;
+            panic!("Self-edge is not allowed");
         }
-        if let Some(existing) = self.network.edges.iter().find(|e| e.source == source && e.target == target) {
-            return existing.id;
+        if let Some(existing) = self
+            .network
+            .synapses
+            .iter()
+            .find(|(_, e)| e.source == source && e.target == target)
+        {
+            return existing.0;
         }
-        
-        let next_id = self.network.edges.iter().map(|e| e.id).max().unwrap_or(0) + 1;
-        self.network.edges.push(Edge { id: next_id, source, target });
-        next_id
+
+        self.network.synapses.insert_with(|idx| Synapse {
+            id: idx as SynapseId,
+            source,
+            target,
+        })
     }
     pub fn pan_to(&mut self, position: Position, animate: bool) {
         let target_offset = (-position.0, -position.1);
@@ -451,30 +485,29 @@ impl AppStore {
     }
 
     pub fn group_selected(&mut self, name: &String) -> Option<GroupId> {
-        let any = !self.selected.is_empty() || !self.selected_groups.is_empty();
-        if !any { return None; }
-        
-        let next_id = self.network.groups.iter().map(|g| g.id).max().unwrap_or(0) + 1;
+        if self.selected.is_empty() && self.selected_groups.is_empty() {
+            return None;
+        }
 
         let mut left = f64::MAX;
         let mut top = f64::MAX;
         let mut right = f64::MIN;
         let mut bottom = f64::MIN;
 
-        for &nid in self.selected.iter() {
-            let n = self.network.get_neuron(nid);
-            left = left.min(n.position.0);
-            top = top.min(n.position.1);
-            right = right.max(n.position.0);
-            bottom = bottom.max(n.position.1);
+        for nid in self.selected.iter() {
+            let p = self.network.neurons[*nid].position;
+            left = left.min(p.0);
+            top = top.min(p.1);
+            right = right.max(p.0);
+            bottom = bottom.max(p.1);
         }
 
-        for &gid in self.selected_groups.iter() {
-            let g = self.network.get_group(gid);
-            left = left.min(g.rect.left);
-            top = top.min(g.rect.top);
-            right = right.max(g.rect.right);
-            bottom = bottom.max(g.rect.bottom);
+        for gid in self.selected_groups.iter() {
+            let r = self.network.groups[*gid].rect.clone();
+            left = left.min(r.left);
+            top = top.min(r.top);
+            right = right.max(r.right);
+            bottom = bottom.max(r.bottom);
         }
 
         let width = right - left;
@@ -482,162 +515,140 @@ impl AppStore {
         let padding_x = width * 0.1;
         let padding_y = height * 0.1;
 
-        self.network.groups.push(Group {
-            id: next_id,
+        let common_ancestor = self
+            .selected
+            .iter()
+            .chain(self.selected_groups.iter())
+            .map(|&id| {
+                if self.network.groups.contains(id) {
+                    self.network.groups[id].parent
+                } else {
+                    self.network.neurons[id].parent
+                }
+            })
+            .fold(None, |acc, parent| match acc {
+                existing if existing == parent => acc,
+                Some(_) => None,
+                None => parent,
+            });
+
+        let new_parent = common_ancestor;
+
+        let new_idx = self.network.groups.insert_with(|idx| Group {
+            id: idx as GroupId,
             name: name.clone(),
-            parent: 0,
+            parent: new_parent,
             neurons: vec![],
             groups: vec![],
             color: Color::default(),
-            rect: Rect::from_corners((left - padding_x, top - padding_y), (right + padding_x, bottom + padding_y)),
+            rect: Rect::from_corners(
+                (left - padding_x, top - padding_y),
+                (right + padding_x, bottom + padding_y),
+            ),
         });
 
-        let nodes_to_move = self.selected.clone();
-        let groups_to_move = self.selected_groups.clone();
+        let nodes1: Vec<_> = self.selected.iter().copied().collect();
+        let groups1: Vec<_> = self.selected_groups.iter().copied().collect();
+        let nodes2: Vec<_> = nodes1.clone();
+        let groups2: Vec<_> = groups1.clone();
+        let nodes3: Vec<_> = nodes1.clone();
+        let groups3: Vec<_> = groups1.clone();
 
-        let common_ancestor = self.selected.iter()
-            .chain(self.selected_groups.iter())
-            .map(|&id| match self.network.groups.iter().find(|g| g.id == id) {
-                Some(group) => group.parent,
-                None => self.network.get_neuron(id).parent,
-            })
-            .fold(None, |acc, parent| {
-                match acc {
-                    Some(existing) if existing == parent => acc,
-                    Some(_) => None,
-                    None => Some(parent),
-                }
-            });
+        self._remove_nodes_from_parent(nodes1, groups1, new_idx);
+        self._reassign_nodes_and_groups(nodes2, groups2, new_parent, new_idx);
 
-        let new_parent = common_ancestor.unwrap_or(0);
+        let mut child_neurons: Vec<NeuronId> = vec![];
 
-        self._remove_nodes_from_parent(&nodes_to_move, &groups_to_move, next_id);
-        self._reassign_nodes_and_groups(&nodes_to_move, &groups_to_move, new_parent, next_id);
-
-        {
-            let mut nodes = vec!();
-            let mut groups = vec!();
-
-            for nid in nodes_to_move.iter() {
-                if self.network.get_neuron(*nid).parent == new_parent {
-                    nodes.push(*nid);
-                }
-            }
-            for gid in groups_to_move.iter() {
-                if self.network.get_group(*gid).parent == new_parent && *gid != next_id {
-                    groups.push(*gid);
-                }
-            }
-
-            let parent = self.network.groups.iter_mut().find(|pg| pg.id == new_parent).unwrap();
-            for nid in nodes.iter() {
-                parent.neurons.push(*nid);
-            }
-            for gid in groups.iter() {
-                parent.groups.push(*gid);
+        for nid in nodes3 {
+            if self.network.neurons[nid].parent == Some(new_idx) {
+                child_neurons.push(nid);
             }
         }
 
-        self.selected.clear();
-        self.toggle_group_selected(next_id);
+        let mut child_groups: Vec<GroupId> = vec![];
+        for gid in groups3 {
+            if gid != new_idx {
+                if self.network.groups[gid].parent == Some(new_idx) {
+                    child_groups.push(gid);
+                }
+            }
+        }
 
-        Some(next_id)
+        let new_group = self.network.groups.get_mut(new_idx).unwrap();
+        new_group.neurons.extend(child_neurons);
+        new_group.groups.extend(child_groups);
+
+        self.selected.clear();
+        self.toggle_group_selected(new_idx);
+
+        Some(new_idx)
+    }
+
+    fn _remove_nodes_from_parent<N, G>(&mut self, nodes_to_move: N, groups_to_move: G, next_id: GroupId)
+    where
+        N: IntoIterator<Item = NeuronId>,
+        G: IntoIterator<Item = GroupId>,
+    {
+        for nid in nodes_to_move {
+            for (_, parent_group) in self.network.groups.iter_mut() {
+                parent_group.neurons.retain(|&cid| cid != nid);
+            }
+        }
+
+        for gid in groups_to_move {
+            if gid != next_id {
+                for (_, parent_group) in self.network.groups.iter_mut() {
+                    parent_group.groups.retain(|&cid| cid != gid);
+                }
+            }
+        }
+    }
+
+    fn _reassign_nodes_and_groups<N, G>(
+        &mut self,
+        nodes_to_move: N,
+        groups_to_move: G,
+        _old_parent: Option<GroupId>,
+        next_id: GroupId,
+    ) where
+        N: IntoIterator<Item = NeuronId>,
+        G: IntoIterator<Item = GroupId>,
+    {
+        for nid in nodes_to_move {
+            if let Some(n) = self.network.neurons.get_mut(nid) {
+                n.parent = Some(next_id);
+            }
+        }
+
+        for gid in groups_to_move {
+            if let Some(g) = self.network.groups.get_mut(gid) {
+                if gid != next_id {
+                    g.parent = Some(next_id);
+                }
+            }
+        }
     }
 
     pub fn delete_neuron(&mut self, id: NeuronId) {
-        self.network.edges.retain(|e| e.source != id && e.target != id);
-        
-        for g in self.network.groups.iter_mut() {
-            g.neurons.retain(|&cid| cid != id);
-        }
-        
-        self.network.neurons.retain(|n| n.id != id);
-        self.selected.retain(|&sid| sid != id);
+        self.network.remove_neuron(id);
+        self.selected.remove(&id);
     }
 
-    pub fn delete_edge(&mut self, id: EdgeId) {
-        self.network.edges.retain(|e| e.id != id);
+    pub fn delete_edge(&mut self, id: SynapseId) {
+        self.network.synapses.retain(|_, e| e.id != id);
     }
 
     pub fn delete_group_recursive(&mut self, id: GroupId) {
-        let mut groups_to_delete: Vec<i64> = vec![id];
-        let mut nodes_to_delete: Vec<i64> = vec![];
-        let mut idx = 0;
-
-        while idx < groups_to_delete.len() {
-            let gid = groups_to_delete[idx];
-
-            for g in self.network.groups.iter() {
-                if g.parent == gid && g.id != id {
-                    if !groups_to_delete.contains(&g.id) {
-                        groups_to_delete.push(g.id);
-                    }
-                }
-            }
-            for n in self.network.neurons.iter() {
-                if n.parent == gid {
-                    nodes_to_delete.push(n.id);
-                }
-            }
-            idx += 1;
-        }
-
-        for nid in nodes_to_delete.iter() {
-            self.delete_neuron(*nid);
-        }
-
-        for pg in self.network.groups.iter_mut() {
-            pg.groups.retain(|cid| !groups_to_delete.contains(cid));
-        }
-        self.network.groups.retain(|g| !groups_to_delete.contains(&g.id));
-        self.selected_groups.retain(|gid| !groups_to_delete.contains(gid));
+        self.network.remove_group(id);
+        self.selected.clear();
+        self.selected_groups.retain(|gid| *gid != id);
     }
 
     pub fn get_next_state_index(&self, model: &NeuronModelKind) -> StateIndex {
         if variant_eq(model, &NeuronModelKind::integrate_fire()) {
             self.network.executor.integrate_fire.voltage.len() as StateIndex
-        } else { -1 }
-    }
-
-    fn _remove_nodes_from_parent(&mut self, nodes_to_move: &[NeuronId], groups_to_move: &[GroupId], next_id: GroupId) {
-        for nid in nodes_to_move.iter() {
-            for parent_group in self.network.groups.iter_mut() {
-                parent_group.neurons.retain(|&cid| cid != *nid);
-            }
-        }
-
-        for gid in groups_to_move.iter() {
-            if *gid != next_id {
-                for parent_group in self.network.groups.iter_mut() {
-                    parent_group.groups.retain(|&cid| cid != *gid);
-                }
-            }
-        }
-    }
-
-    fn _reassign_nodes_and_groups(&mut self, nodes_to_move: &[NeuronId], groups_to_move: &[GroupId], new_parent: GroupId, next_id: GroupId) {
-        fn inside(network: &Network, selected_groups: &Vec<GroupId>, n: &Neuron) -> bool {
-            selected_groups.iter().all(|&gid| !network.get_group(gid).neurons.contains(&n.id))
-        }
-
-        let mut nodes_inside = vec!();
-
-        for n in self.network.neurons.iter() {
-            if nodes_to_move.contains(&n.id) && inside(&self.network, &self.selected_groups, n) {
-                nodes_inside.push(n.id);
-            }
-        }
-
-        for n in self.network.neurons.iter_mut() {
-            if nodes_inside.contains(&n.id) && n.parent == new_parent {
-                n.parent = next_id;
-            }
-        }
-
-        for g in self.network.groups.iter_mut() {
-            if g.id != next_id && groups_to_move.contains(&g.id) && g.parent == new_parent {
-                g.parent = next_id;
-            }
+        } else {
+            0
         }
     }
 }

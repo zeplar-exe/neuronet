@@ -1,12 +1,16 @@
+use crate::components::canvas::GlobalCanvas;
+use crate::components::circle::CircleNode;
+use crate::components::context_menu::GlobalContextMenu;
+use crate::components::explorer::Explorer;
+use crate::components::properties::Properties;
+use crate::gen::generate_group_name;
+use crate::models::NeuronModelKind;
+use crate::state::{
+    AppStore, Color, ContextMenuTarget, Group, GroupId, IntegrateFireParams, Neuron, NeuronId, Rect, ViewType,
+};
+use crate::tools::{tool_by_name, ToolContext, ToolRequest};
 use dioxus::html::geometry::ClientPoint;
 use dioxus::prelude::*;
-use crate::state::{AppStore, ViewType, Neuron, Color, Group, Rect};
-use crate::components::explorer::Explorer;
-use crate::components::canvas::GlobalCanvas;
-use crate::components::properties::Properties;
-use crate::components::circle::CircleNode;
-use crate::models::NeuronModelKind;
-use crate::tools::{tool_by_name, ToolContext, ToolRequest};
 
 #[component]
 pub fn EditView() -> Element {
@@ -32,25 +36,28 @@ pub fn EditView() -> Element {
                 }
                 Key::Character(k) if (k.eq_ignore_ascii_case("g")) && (m.ctrl() || m.meta()) => {
                     e.prevent_default();
-                    store.write().group_selected(&"Group".to_string());
+                    store.write().group_selected(&generate_group_name());
                 }
                 Key::Character(k) if k.eq_ignore_ascii_case("f") => {
                     e.prevent_default();
 
                     let s = store.read();
-                    if s.selected.is_empty() { return; }
+                    if s.selected.is_empty() {
+                        return;
+                    }
 
                     let mut sum_x = 0.0f64;
                     let mut sum_y = 0.0f64;
                     let mut count = 0.0f64;
-                    
+
                     for id in s.selected.iter() {
-                        if let Some(n) = s.network.neurons.iter().find(|n| &n.id == id) {
-                            sum_x += n.position.0; sum_y += n.position.1; 
+                        if let Some((_, n)) = s.network.neurons.iter().find(|(nid, _)| nid == id) {
+                            sum_x += n.position.0;
+                            sum_y += n.position.1;
                             count += 1.0;
                         }
                     }
-                    
+
                     drop(s);
 
                     if count > 0.0 {
@@ -59,14 +66,25 @@ pub fn EditView() -> Element {
 
                         store.write().pan_to((avg_x, avg_y), true);
                     }
-
                 }
                 Key::Character(k) => {
                     let ku = k.to_uppercase();
                     match ku.as_str() {
-                        "S" => { let mut s = store.write(); s.set_tool(ViewType::EDIT, "select"); active_tool.set(tool_by_name("select")); },
-                        "A" => { let mut s = store.write(); s.set_tool(ViewType::EDIT, "add"); active_tool.set(tool_by_name("add")); },
-                        "E" => { let mut s = store.write(); s.set_tool(ViewType::EDIT, "edge"); active_tool.set(tool_by_name("edge")); }
+                        "S" => {
+                            let mut s = store.write();
+                            s.set_tool(ViewType::EDIT, "select");
+                            active_tool.set(tool_by_name("select"));
+                        }
+                        "A" => {
+                            let mut s = store.write();
+                            s.set_tool(ViewType::EDIT, "add");
+                            active_tool.set(tool_by_name("add"));
+                        }
+                        "E" => {
+                            let mut s = store.write();
+                            s.set_tool(ViewType::EDIT, "edge");
+                            active_tool.set(tool_by_name("edge"));
+                        }
                         _ => {}
                     }
                 }
@@ -78,14 +96,14 @@ pub fn EditView() -> Element {
     let mut is_dragging = use_signal(|| false);
     let mut is_panning = use_signal(|| false);
 
-    let node_centers: std::collections::HashMap<i64, (f64, f64)> = {
+    let node_centers: std::collections::HashMap<NeuronId, (f64, f64)> = {
         let s = store.read();
         let mut map = std::collections::HashMap::new();
-        for n in s.network.neurons.iter() {
+        for (nid, n) in s.network.neurons.iter() {
             let r = 20.0;
             let cx = n.position.0 + r;
             let cy = n.position.1 + r;
-            map.insert(n.id, (cx, cy));
+            map.insert(nid, (cx, cy));
         }
         map
     };
@@ -114,7 +132,7 @@ pub fn EditView() -> Element {
         let mut ctx = tool_ctx.clone();
         move |evt: MouseEvent| {
             let coords = evt.client_coordinates();
-            
+
             if *is_dragging.read() {
                 active_tool.write().on_drag(&mut ctx, &evt);
             } else if *is_panning.read() {
@@ -139,6 +157,16 @@ pub fn EditView() -> Element {
         }
     };
 
+    let oncontextmenu_canvas = {
+        move |evt: MouseEvent| {
+            evt.prevent_default();
+            let p = evt.client_coordinates();
+            store
+                .write()
+                .open_context_menu(p.x, p.y, ContextMenuTarget::Canvas, None);
+        }
+    };
+
     rsx! {
         GlobalCanvas {
             onkeydown: onkeydown_canvas,
@@ -146,21 +174,22 @@ pub fn EditView() -> Element {
             onmousedown: onmousedown_canvas,
             onmousemove: onmousemove_canvas,
             onmouseup: onmouseup_canvas,
+            oncontextmenu: oncontextmenu_canvas,
 
             // Edge rendering (behind nodes)
             svg { style: "position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;",
-                for e in store.read().network.edges.iter() {
+                for (_, e) in store.read().network.synapses.iter() {
                     if let (Some(&(x1, y1)), Some(&(x2, y2))) = (node_centers.get(&e.source), node_centers.get(&e.target)) {
                         line { x1: "{x1}", y1: "{y1}", x2: "{x2}", y2: "{y2}", stroke: "#aab", stroke_width: "2" }
                     }
                 }
             }
-            for n in store.read().network.neurons.iter() {
-                RenderNode { neuron: n.clone(), store: store, active_tool: active_tool, is_dragging: is_dragging }
+            for (_, n) in store.read().network.neurons.iter() {
+                RenderNode { id: n.id, store: store, active_tool: active_tool, is_dragging: is_dragging }
             }
 
-            for g in store.read().network.groups.iter() {
-                RenderGroup { group: g.clone(), store: store }
+            for (_, g) in store.read().network.groups.iter() {
+                RenderGroup { id: g.id, store: store }
             }
 
             if let Some(r) = active_tool.read().select_rect() {
@@ -185,32 +214,38 @@ pub fn EditView() -> Element {
         }
 
         if let Some(ToolRequest::AddPopulation{ rect }) = active_tool.read().request().clone() {
-            AddPopulationModal { store: store.clone(), active_tool: active_tool.clone(), rect: rect }
+            AddPopulationModal { store: store, active_tool: active_tool, rect: rect }
         }
+
+        // Global context menu overlay (renders above everything)
+        GlobalContextMenu {}
     }
 }
 
 #[component]
 fn ToolButton(label: String, active: bool, onclick: EventHandler<MouseEvent>) -> Element {
-    let class = if active { "nn-toolbtn nn-toolbtn--active" } else { "nn-toolbtn" };
+    let class = if active {
+        "nn-toolbtn nn-toolbtn--active"
+    } else {
+        "nn-toolbtn"
+    };
     rsx! { button { class: class, onclick: move |e| onclick.call(e), "{label}" } }
 }
 
 #[component]
 fn RenderNode(
-    neuron: Neuron,
+    id: NeuronId,
     store: Signal<AppStore>,
     active_tool: Signal<Box<dyn crate::tools::Tool>>,
     is_dragging: Signal<bool>,
 ) -> Element {
+    let s = store.read();
+    let neuron = s.network.neurons.get(id).unwrap().clone();
     let radius = 20.0;
-    let selected = store.read().selected.iter().any(|sid| sid == &neuron.id);
+    let selected = s.selected.contains(&id);
     let left = neuron.position.0;
     let top = neuron.position.1;
     let node_style = format!("position: absolute; left: {left}px; top: {top}px");
-
-    let node_for_down = neuron.clone();
-    let node_for_click = neuron.clone();
 
     rsx! {
         div { style: node_style, class: "nn-select-none",
@@ -218,12 +253,18 @@ fn RenderNode(
                 e.stop_propagation();
                 is_dragging.set(true);
                 let mut tool_ctx = ToolContext { store };
-                active_tool.write().on_node_drag_start(&mut tool_ctx, &node_for_down, &e);
+                active_tool.write().on_node_drag_start(&mut tool_ctx, &id, &e);
             },
             onclick: move |e| {
                 e.stop_propagation();
                 let mut tool_ctx = ToolContext { store };
-                active_tool.write().on_node_click(&mut tool_ctx, &node_for_click, &e);
+                active_tool.write().on_node_click(&mut tool_ctx, &id, &e);
+            },
+            oncontextmenu: move |e| {
+                e.prevent_default();
+                e.stop_propagation();
+                let p = e.client_coordinates();
+                store.write().open_context_menu(p.x, p.y, ContextMenuTarget::Neuron(neuron.id), Some(neuron.name.clone()));
             },
             CircleNode { radius, selected }
         }
@@ -231,20 +272,32 @@ fn RenderNode(
 }
 
 #[component]
-fn RenderGroup(group: Group, store: Signal<AppStore>) -> Element {
+fn RenderGroup(id: GroupId, store: Signal<AppStore>) -> Element {
+    let group = store.read().network.groups.get(id).unwrap().clone();
     let (x, y, w, h) = group.rect.as_tuple_wh();
     let hex = group.color.hex();
-    let group_style = format!("position: absolute; left: {x}px; top: {y}px; width: {w}px; height: {h}px; background-color: {hex};");
+    let group_style =
+        format!("position: absolute; left: {x}px; top: {y}px; width: {w}px; height: {h}px; background-color: {hex};");
 
     rsx! {
         div { style: group_style,
+            oncontextmenu: move |e| {
+                e.prevent_default();
+                e.stop_propagation();
+                let p = e.client_coordinates();
+                store.write().open_context_menu(p.x, p.y, ContextMenuTarget::Group(group.id), Some(group.name.clone()));
+            },
 
         }
     }
 }
 
 #[component]
-fn AddPopulationModal(store: Signal<AppStore>, active_tool: Signal<Box<dyn crate::tools::Tool>>, rect: Rect) -> Element {
+fn AddPopulationModal(
+    store: Signal<AppStore>,
+    active_tool: Signal<Box<dyn crate::tools::Tool>>,
+    rect: Rect,
+) -> Element {
     let mut name = use_signal(|| String::from("Population"));
     let mut arrangement = use_signal(|| String::from("Poisson"));
     let mut count = use_signal(|| String::from("10"));
@@ -260,7 +313,11 @@ fn AddPopulationModal(store: Signal<AppStore>, active_tool: Signal<Box<dyn crate
             let name = name.read().clone();
             let arrangement = arrangement.read().clone();
             let count_val: usize = count.read().parse().unwrap_or(0);
-            if count_val == 0 { let mut at = active_tool.clone(); at.write().clear_request(); return; }
+            if count_val == 0 {
+                let mut at = active_tool.clone();
+                at.write().clear_request();
+                return;
+            }
 
             let rect = rect.clone();
 
@@ -272,16 +329,16 @@ fn AddPopulationModal(store: Signal<AppStore>, active_tool: Signal<Box<dyn crate
                 let cell_w = if grid_cols > 0 { w / grid_cols as f64 } else { w };
                 let cell_h = if grid_rows > 0 { h / grid_rows as f64 } else { h };
                 let radius = 20.0;
-                
-                let mut group = Group {
-                    id: store.read().network.get_next_group_id(),
+
+                let group_index = store.write().network.groups.insert_with(|idx| Group {
+                    id: idx as GroupId,
                     name: name.clone(),
-                    parent: 0,
+                    parent: None,
                     neurons: vec![],
                     groups: vec![],
                     rect,
-                    color: Color::default()
-                };
+                    color: Color::default(),
+                });
 
                 for i in 0..count_val {
                     let (px, py) = match arrangement.as_str() {
@@ -309,23 +366,20 @@ fn AddPopulationModal(store: Signal<AppStore>, active_tool: Signal<Box<dyn crate
                         }
                     };
 
-                    let mut s = store.write();
                     let kind = NeuronModelKind::default();
-                    let state_index = s.get_next_state_index(&kind);
-                    let id = s.network.get_next_neuron_id();
 
-                    s.push_neuron(Neuron {
-                        id,
-                        model: kind,
-                        state_index,
-                        position: (px, py),
-                        parent: group.id
-                    });
-
-                    group.neurons.push(id);
+                    match kind {
+                        NeuronModelKind::IntegrateFire(_) => {
+                            store.write().network.add_integrate_fire_neuron(
+                                IntegrateFireParams::default(),
+                                (px, py),
+                                group_index,
+                            );
+                        }
+                        _ => {}
+                    }
                 }
 
-                store.write().network.groups.push(group);
                 active_tool.write().clear_request();
             });
         }

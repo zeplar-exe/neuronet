@@ -1,9 +1,12 @@
+use crate::components::tooltip::{TooltipIndicator, TooltipKind};
+use crate::models::NeuronModelKind;
+use crate::state::{AppStore, NeuronId};
+use crate::util::variant_eq;
+use dioxus::html::u::id;
 use dioxus::prelude::*;
 use std::collections::HashSet;
-use crate::components::tooltip::{TooltipIndicator, TooltipKind};
-use crate::models::{NeuronModelKind};
-use crate::util::variant_eq;
-use crate::state::AppStore;
+
+type NeuronPropertySnapshot = (NeuronId, f64, f64, f64, f64, f64, f64);
 
 #[component]
 pub fn Properties() -> Element {
@@ -22,21 +25,28 @@ pub fn Properties() -> Element {
 
 #[component]
 fn RenderNeuronProperties(store: Signal<AppStore>) -> Element {
-    let (selected_neurons_count, unique_model_count, id_string, model_name_string, editable_snapshot): (usize, usize, String, String, Option<(i64, f64, f64, f64, f64, f64, f64)>) = {
+    let (selected_neurons_count, unique_model_count, model_name_string, editable_snapshot): (
+        usize,
+        usize,
+        String,
+        Option<NeuronPropertySnapshot>,
+    ) = {
         let s = store.read();
         let selected_ids = s.selected.clone();
         let selected_neurons = s.get_selected_neurons();
         let selected_neurons_count = selected_neurons.len();
 
-        let unique_model_names: HashSet<&'static str> = s.network.neurons.iter()
-            .filter(|n| selected_ids.contains(&n.id))
-            .map(|n| n.model.name())
+        let unique_model_names: HashSet<&'static str> = s
+            .network
+            .neurons
+            .iter()
+            .filter(|(nid, _)| selected_ids.contains(nid))
+            .map(|(_, n)| n.model.name())
             .collect();
         let unique_model_count = unique_model_names.len();
 
-        let id = "<mixed>".to_string();
         let mut model_name = "<mixed>".to_string();
-        let mut snapshot: Option<(i64, f64, f64, f64, f64, f64, f64)> = None;
+        let mut snapshot: Option<NeuronPropertySnapshot> = None;
 
         if selected_neurons_count == 1 {
             let n = selected_neurons[0];
@@ -55,7 +65,7 @@ fn RenderNeuronProperties(store: Signal<AppStore>) -> Element {
         } else if unique_model_count == 1 {
             model_name = unique_model_names.iter().next().copied().unwrap_or("").to_string();
         }
-        (selected_neurons_count, unique_model_count, id, model_name, snapshot)
+        (selected_neurons_count, unique_model_count, model_name, snapshot)
     };
 
     let mut section = rsx! { div {
@@ -70,136 +80,245 @@ fn RenderNeuronProperties(store: Signal<AppStore>) -> Element {
         } } };
     } else if unique_model_count == 1 {
         let base = rsx! {
-            ReadonlyStringProperty { label: "ID", value: "{id_string}" }
             ReadonlyStringProperty { label: "Model", value: "{model_name_string}" }
             ReadonlyStringProperty { label: "Tags", value: "" }
         };
 
-        // If editable snapshot is present (IntegrateFire, single selection), show fields
         if let Some((nid, voltage_snapshot, reset, threshold, strength, min_v, max_v)) = editable_snapshot {
             // Handlers per field that write directly to the store with validation
+
             let oninput_voltage = {
-                let mut store = store.clone();
                 move |e: FormEvent| {
+                    let mut s = store.write();
                     if let Ok(mut v) = e.value().parse::<f64>() {
-                        let mut s = store.write();
-                        if let Some(n) = s.network.neurons.iter().find(|n| n.id == nid) {
-                            if variant_eq(&n.model, &NeuronModelKind::integrate_fire()) {
-                                let idx = n.state_index as usize;
-                                let min_v = s.network.executor.integrate_fire.minimum_voltage.get(idx).copied().unwrap_or(-1000.0);
-                                let max_v = s.network.executor.integrate_fire.maximum_voltage.get(idx).copied().unwrap_or(1000.0);
+                        if let Some((_, node)) = s.network.neurons.iter().find(|(i, _)| *i == nid) {
+                            if variant_eq(&node.model, &NeuronModelKind::integrate_fire()) {
+                                let idx = node.state_index as usize;
+                                let min_v = s
+                                    .network
+                                    .executor
+                                    .integrate_fire
+                                    .minimum_voltage
+                                    .get(idx)
+                                    .copied()
+                                    .unwrap_or(-1000.0);
+                                let max_v = s
+                                    .network
+                                    .executor
+                                    .integrate_fire
+                                    .maximum_voltage
+                                    .get(idx)
+                                    .copied()
+                                    .unwrap_or(1000.0);
                                 v = v.clamp(min_v, max_v);
-                                if let Some(slot) = s.network.executor.integrate_fire.voltage.get_mut(idx) { *slot = v; }
+                                if let Some(slot) = s.network.executor.integrate_fire.voltage.get_mut(idx) {
+                                    *slot = v;
+                                }
                             }
                         }
                     }
                 }
             };
             let oninput_reset = {
-                let mut store = store.clone();
                 move |e: FormEvent| {
+                    let mut s = store.write();
                     if let Ok(mut v) = e.value().parse::<f64>() {
-                        let mut s = store.write();
-                        if let Some(n) = s.network.neurons.iter().find(|n| n.id == nid) {
-                            if variant_eq(&n.model, &NeuronModelKind::integrate_fire()) {
-                                let idx = n.state_index as usize;
-                                let min_v = s.network.executor.integrate_fire.minimum_voltage.get(idx).copied().unwrap_or(-1000.0);
-                                let mut max_v = s.network.executor.integrate_fire.maximum_voltage.get(idx).copied().unwrap_or(1000.0);
-                                if min_v > max_v { max_v = min_v; }
+                        if let Some((_, node)) = s.network.neurons.iter().find(|(i, _)| *i == nid) {
+                            if variant_eq(&node.model, &NeuronModelKind::integrate_fire()) {
+                                let idx = node.state_index as usize;
+                                let min_v = s
+                                    .network
+                                    .executor
+                                    .integrate_fire
+                                    .minimum_voltage
+                                    .get(idx)
+                                    .copied()
+                                    .unwrap_or(-1000.0);
+                                let mut max_v = s
+                                    .network
+                                    .executor
+                                    .integrate_fire
+                                    .maximum_voltage
+                                    .get(idx)
+                                    .copied()
+                                    .unwrap_or(1000.0);
+                                if min_v > max_v {
+                                    max_v = min_v;
+                                }
                                 v = v.clamp(min_v, max_v);
-                                if let Some(slot) = s.network.executor.integrate_fire.reset_potential.get_mut(idx) { *slot = v; }
+                                if let Some(slot) = s.network.executor.integrate_fire.reset_potential.get_mut(idx) {
+                                    *slot = v;
+                                }
                                 // ensure threshold >= reset
                                 if let Some(th) = s.network.executor.integrate_fire.threshold.get_mut(idx) {
-                                    if *th < v { *th = v; }
-                                    if *th > max_v { *th = max_v; }
+                                    if *th < v {
+                                        *th = v;
+                                    }
+                                    if *th > max_v {
+                                        *th = max_v;
+                                    }
                                 }
                                 // clamp voltage
-                                if let Some(vol) = s.network.executor.integrate_fire.voltage.get_mut(idx) { *vol = (*vol).clamp(min_v, max_v); }
+                                if let Some(vol) = s.network.executor.integrate_fire.voltage.get_mut(idx) {
+                                    *vol = (*vol).clamp(min_v, max_v);
+                                }
                             }
                         }
                     }
                 }
             };
             let oninput_threshold = {
-                let mut store = store.clone();
                 move |e: FormEvent| {
+                    let mut s = store.write();
                     if let Ok(mut v) = e.value().parse::<f64>() {
-                        let mut s = store.write();
-                        if let Some(n) = s.network.neurons.iter().find(|n| n.id == nid) {
-                            if variant_eq(&n.model, &NeuronModelKind::integrate_fire()) {
-                                let idx = n.state_index as usize;
-                                let reset = s.network.executor.integrate_fire.reset_potential.get(idx).copied().unwrap_or(v);
-                                let max_v = s.network.executor.integrate_fire.maximum_voltage.get(idx).copied().unwrap_or(v);
-                                if reset > v { v = reset; }
-                                if v > max_v { v = max_v; }
-                                if let Some(th) = s.network.executor.integrate_fire.threshold.get_mut(idx) { *th = v; }
+                        if let Some((_, node)) = s.network.neurons.iter().find(|(i, _)| *i == nid) {
+                            if variant_eq(&node.model, &NeuronModelKind::integrate_fire()) {
+                                let idx = node.state_index as usize;
+                                let reset = s
+                                    .network
+                                    .executor
+                                    .integrate_fire
+                                    .reset_potential
+                                    .get(idx)
+                                    .copied()
+                                    .unwrap_or(v);
+                                let max_v = s
+                                    .network
+                                    .executor
+                                    .integrate_fire
+                                    .maximum_voltage
+                                    .get(idx)
+                                    .copied()
+                                    .unwrap_or(v);
+                                if reset > v {
+                                    v = reset;
+                                }
+                                if v > max_v {
+                                    v = max_v;
+                                }
+                                if let Some(th) = s.network.executor.integrate_fire.threshold.get_mut(idx) {
+                                    *th = v;
+                                }
                             }
                         }
                     }
                 }
             };
             let oninput_strength = {
-                let mut store = store.clone();
                 move |e: FormEvent| {
+                    let mut s = store.write();
                     if let Ok(v) = e.value().parse::<f64>() {
-                        let mut s = store.write();
-                        if let Some(n) = s.network.neurons.iter().find(|n| n.id == nid) {
-                            if variant_eq(&n.model, &NeuronModelKind::integrate_fire()) {
-                                let idx = n.state_index as usize;
-                                if let Some(st) = s.network.executor.integrate_fire.strength.get_mut(idx) { *st = v; }
+                        if let Some((_, node)) = s.network.neurons.iter().find(|(i, _)| *i == nid) {
+                            if variant_eq(&node.model, &NeuronModelKind::integrate_fire()) {
+                                let idx = node.state_index as usize;
+                                if let Some(st) = s.network.executor.integrate_fire.strength.get_mut(idx) {
+                                    *st = v;
+                                }
                             }
                         }
                     }
                 }
             };
             let oninput_min = {
-                let mut store = store.clone();
                 move |e: FormEvent| {
+                    let mut s = store.write();
                     if let Ok(mut vmin) = e.value().parse::<f64>() {
-                        let mut s = store.write();
-                        if let Some(n) = s.network.neurons.iter().find(|n| n.id == nid) {
-                            if variant_eq(&n.model, &NeuronModelKind::integrate_fire()) {
-                                let idx = n.state_index as usize;
-                                let mut vmax = s.network.executor.integrate_fire.maximum_voltage.get(idx).copied().unwrap_or(vmin);
-                                if vmin > vmax { vmax = vmin; }
-                                if let Some(min_slot) = s.network.executor.integrate_fire.minimum_voltage.get_mut(idx) { *min_slot = vmin; }
-                                if let Some(max_slot) = s.network.executor.integrate_fire.maximum_voltage.get_mut(idx) { *max_slot = vmax; }
+                        if let Some((_, node)) = s.network.neurons.iter().find(|(i, _)| *i == nid) {
+                            if variant_eq(&node.model, &NeuronModelKind::integrate_fire()) {
+                                let idx = node.state_index as usize;
+                                let mut vmax = s
+                                    .network
+                                    .executor
+                                    .integrate_fire
+                                    .maximum_voltage
+                                    .get(idx)
+                                    .copied()
+                                    .unwrap_or(vmin);
+                                if vmin > vmax {
+                                    vmax = vmin;
+                                }
+                                if let Some(min_slot) = s.network.executor.integrate_fire.minimum_voltage.get_mut(idx) {
+                                    *min_slot = vmin;
+                                }
+                                if let Some(max_slot) = s.network.executor.integrate_fire.maximum_voltage.get_mut(idx) {
+                                    *max_slot = vmax;
+                                }
                                 // adjust reset/threshold/voltage to range
-                                if let Some(reset_slot) = s.network.executor.integrate_fire.reset_potential.get_mut(idx) {
+                                if let Some(reset_slot) = s.network.executor.integrate_fire.reset_potential.get_mut(idx)
+                                {
                                     *reset_slot = (*reset_slot).clamp(vmin, vmax);
                                 }
-                                let reset_now = s.network.executor.integrate_fire.reset_potential.get(idx).copied().unwrap_or(vmin);
+                                let reset_now = s
+                                    .network
+                                    .executor
+                                    .integrate_fire
+                                    .reset_potential
+                                    .get(idx)
+                                    .copied()
+                                    .unwrap_or(vmin);
                                 if let Some(th_slot) = s.network.executor.integrate_fire.threshold.get_mut(idx) {
-                                    if *th_slot < reset_now { *th_slot = reset_now; }
-                                    if *th_slot > vmax { *th_slot = vmax; }
+                                    if *th_slot < reset_now {
+                                        *th_slot = reset_now;
+                                    }
+                                    if *th_slot > vmax {
+                                        *th_slot = vmax;
+                                    }
                                 }
-                                if let Some(vol_slot) = s.network.executor.integrate_fire.voltage.get_mut(idx) { *vol_slot = (*vol_slot).clamp(vmin, vmax); }
+                                if let Some(vol_slot) = s.network.executor.integrate_fire.voltage.get_mut(idx) {
+                                    *vol_slot = (*vol_slot).clamp(vmin, vmax);
+                                }
                             }
                         }
                     }
                 }
             };
             let oninput_max = {
-                let mut store = store.clone();
                 move |e: FormEvent| {
+                    let mut s = store.write();
                     if let Ok(mut vmax) = e.value().parse::<f64>() {
-                        let mut s = store.write();
-                        if let Some(n) = s.network.neurons.iter().find(|n| n.id == nid) {
-                            if variant_eq(&n.model, &NeuronModelKind::integrate_fire()) {
-                                let idx = n.state_index as usize;
-                                let vmin = s.network.executor.integrate_fire.minimum_voltage.get(idx).copied().unwrap_or(vmax);
-                                if vmax < vmin { vmax = vmin; }
-                                if let Some(max_slot) = s.network.executor.integrate_fire.maximum_voltage.get_mut(idx) { *max_slot = vmax; }
+                        if let Some((_, node)) = s.network.neurons.iter().find(|(i, _)| *i == nid) {
+                            if variant_eq(&node.model, &NeuronModelKind::integrate_fire()) {
+                                let idx = node.state_index as usize;
+                                let vmin = s
+                                    .network
+                                    .executor
+                                    .integrate_fire
+                                    .minimum_voltage
+                                    .get(idx)
+                                    .copied()
+                                    .unwrap_or(vmax);
+                                if vmax < vmin {
+                                    vmax = vmin;
+                                }
+                                if let Some(max_slot) = s.network.executor.integrate_fire.maximum_voltage.get_mut(idx) {
+                                    *max_slot = vmax;
+                                }
                                 // clamp others
-                                if let Some(reset_slot) = s.network.executor.integrate_fire.reset_potential.get_mut(idx) {
-                                    if *reset_slot > vmax { *reset_slot = vmax; }
+                                if let Some(reset_slot) = s.network.executor.integrate_fire.reset_potential.get_mut(idx)
+                                {
+                                    if *reset_slot > vmax {
+                                        *reset_slot = vmax;
+                                    }
                                 }
-                                let reset_now = s.network.executor.integrate_fire.reset_potential.get(idx).copied().unwrap_or(vmin);
+                                let reset_now = s
+                                    .network
+                                    .executor
+                                    .integrate_fire
+                                    .reset_potential
+                                    .get(idx)
+                                    .copied()
+                                    .unwrap_or(vmin);
                                 if let Some(th_slot) = s.network.executor.integrate_fire.threshold.get_mut(idx) {
-                                    if *th_slot > vmax { *th_slot = vmax; }
-                                    if *th_slot < reset_now { *th_slot = reset_now; }
+                                    if *th_slot > vmax {
+                                        *th_slot = vmax;
+                                    }
+                                    if *th_slot < reset_now {
+                                        *th_slot = reset_now;
+                                    }
                                 }
-                                if let Some(vol_slot) = s.network.executor.integrate_fire.voltage.get_mut(idx) { *vol_slot = (*vol_slot).clamp(vmin, vmax); }
+                                if let Some(vol_slot) = s.network.executor.integrate_fire.voltage.get_mut(idx) {
+                                    *vol_slot = (*vol_slot).clamp(vmin, vmax);
+                                }
                             }
                         }
                     }

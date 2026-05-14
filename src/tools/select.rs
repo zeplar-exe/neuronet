@@ -1,7 +1,8 @@
+use crate::state::{Neuron, NeuronId, Rect};
+use crate::tools::{Tool, ToolContext};
 use dioxus::events::MouseEvent;
 use dioxus::prelude::*;
-use crate::state::{Neuron, Rect};
-use crate::tools::{Tool, ToolContext};
+use std::collections::HashSet;
 
 pub struct SelectTool {
     select_dragging: bool,
@@ -9,59 +10,87 @@ pub struct SelectTool {
     select_rect: Option<Rect>,
     drag_start: (f64, f64),
     moved: bool,
-    suppress_node_click: bool, suppress_canvas_click: bool,
-    drag_ids: Vec<i64>,
-    start_positions: std::collections::HashMap<i64, (f64, f64)>,
+    suppress_node_click: bool,
+    suppress_canvas_click: bool,
+    drag_ids: HashSet<NeuronId>,
+    start_positions: std::collections::HashMap<NeuronId, (f64, f64)>,
 }
 impl Default for SelectTool {
     fn default() -> Self {
         Self {
-            select_dragging: false, node_dragging: false,
+            select_dragging: false,
+            node_dragging: false,
             drag_start: (0.0, 0.0),
             select_rect: None,
-            moved: false, suppress_node_click: false, suppress_canvas_click: false,
-            drag_ids: vec![], start_positions: Default::default(),
-
+            moved: false,
+            suppress_node_click: false,
+            suppress_canvas_click: false,
+            drag_ids: HashSet::default(),
+            start_positions: Default::default(),
         }
     }
 }
 impl Tool for SelectTool {
-    fn name(&self) -> &'static str { "select" }
-    fn on_canvas_click(&mut self, ctx: &mut ToolContext, _evt: &MouseEvent) {
-        if self.suppress_canvas_click { self.suppress_canvas_click = false; return; }
+    fn name(&self) -> &'static str {
+        "select"
     }
-    fn on_node_click(&mut self, ctx: &mut ToolContext, node: &Neuron, evt: &MouseEvent) {
-        if self.suppress_node_click { self.suppress_node_click = false; return; }
+    fn on_canvas_click(&mut self, ctx: &mut ToolContext, _evt: &MouseEvent) {
+        if self.suppress_canvas_click {
+            self.suppress_canvas_click = false;
+            return;
+        }
+    }
+    fn on_node_click(&mut self, ctx: &mut ToolContext, id: &NeuronId, evt: &MouseEvent) {
+        if self.suppress_node_click {
+            self.suppress_node_click = false;
+            return;
+        }
         self.suppress_canvas_click = true;
 
         let mods = evt.modifiers();
         let multi = mods.ctrl() || mods.meta();
-        if multi { ctx.store.write().toggle_selected(node.id) }
-        else { ctx.store.write().select_only(node.id) }
+        if multi {
+            ctx.store.write().toggle_selected(*id)
+        } else {
+            ctx.store.write().select_only(*id)
+        }
     }
-    fn on_node_drag_start(&mut self, ctx: &mut ToolContext, node: &Neuron, evt: &MouseEvent) {
+    fn on_node_drag_start(&mut self, ctx: &mut ToolContext, id: &NeuronId, evt: &MouseEvent) {
+        dbg!("node drag start");
         let mut s = ctx.store.write();
         let mods = evt.modifiers();
-        if mods.ctrl() || mods.meta() { s.ensure_selected(node.id); }
-        else { s.select_only(node.id); }
+        if mods.ctrl() || mods.meta() {
+            s.ensure_selected(*id);
+        } else {
+            s.select_only(*id);
+        }
 
         self.drag_ids = s.selected.clone();
-        self.start_positions = s.network.neurons.iter().filter(|n| self.drag_ids.contains(&n.id)).map(|n| (n.id, n.position)).collect();
+        self.start_positions = s
+            .network
+            .neurons
+            .iter()
+            .filter(|(nid, _)| self.drag_ids.contains(nid))
+            .map(|(nid, n)| (nid, n.position))
+            .collect();
         self.node_dragging = true;
         self.select_dragging = false;
         self.moved = false;
         self.suppress_node_click = false;
-        self.drag_start = (evt.client_coordinates().x, evt.client_coordinates().y);
+        self.drag_start = (evt.element_coordinates().x, evt.element_coordinates().y);
     }
     fn on_drag_start(&mut self, ctx: &mut ToolContext, evt: &MouseEvent) {
         self.select_dragging = true;
         self.node_dragging = false;
-        self.select_rect = None;
-        self.drag_start = (evt.client_coordinates().x, evt.client_coordinates().y);
+
+        let x = evt.element_coordinates().x;
+        let y = evt.element_coordinates().y;
+        self.drag_start = (x, y);
+        self.select_rect = Some(Rect::from_dimensions_f(x, y, 0.0, 0.0));
     }
     fn on_drag(&mut self, ctx: &mut ToolContext, evt: &MouseEvent) {
-        let x = evt.client_coordinates().x;
-        let y = evt.client_coordinates().y;
+        let x = evt.element_coordinates().x;
+        let y = evt.element_coordinates().y;
 
         if self.select_dragging {
             let left = self.drag_start.0.min(x);
@@ -73,7 +102,9 @@ impl Tool for SelectTool {
             return;
         }
 
-        if !self.node_dragging { return; }
+        if !self.node_dragging {
+            return;
+        }
 
         let dx = x - self.drag_start.0;
         let dy = y - self.drag_start.1;
@@ -83,12 +114,14 @@ impl Tool for SelectTool {
             self.suppress_node_click = true;
         }
 
-        if self.drag_ids.is_empty() { return; }
+        if self.drag_ids.is_empty() {
+            return;
+        }
         let mut s = ctx.store.write();
 
-        for n in s.network.neurons.iter_mut() {
-            if let Some(&(sx, sy)) = self.start_positions.get(&n.id) {
-                if self.drag_ids.contains(&n.id) {
+        for (nid, n) in s.network.neurons.iter_mut() {
+            if let Some(&(sx, sy)) = self.start_positions.get(&nid) {
+                if self.drag_ids.contains(&nid) {
                     n.position = (sx + dx, sy + dy);
                 }
             }
@@ -96,22 +129,24 @@ impl Tool for SelectTool {
     }
     fn on_drag_end(&mut self, ctx: &mut ToolContext, evt: &MouseEvent) {
         if self.select_dragging {
-            let (left, top, width, height) = self.select_rect.clone().unwrap().as_tuple_wh();
-            let mut store = ctx.store.write();
-            store.clear_selection();
+            if let Some(rect) = self.select_rect.clone() {
+                let (left, top, width, height) = rect.as_tuple_wh();
+                let mut store = ctx.store.write();
+                store.clear_selection();
 
-            let mut selected = vec![];
+                let mut selected = vec![];
 
-            for neuron in store.network.neurons.iter() {
-                let (nx, ny) = neuron.position;
-                if nx >= left && nx <= left + width &&
-                    ny >= top && ny <= top + height {
-                    selected.push(neuron.id);
+                for (nid, neuron) in store.network.neurons.iter() {
+                    let (nx, ny) = neuron.position;
+                    if nx >= left && nx <= left + width && ny >= top && ny <= top + height {
+                        selected.push(nid);
+                    }
+                }
+
+                for id in selected {
+                    store.ensure_selected(id);
                 }
             }
-
-            for id in selected { store.ensure_selected(id); }
-
 
             self.suppress_canvas_click = true;
         }

@@ -9,6 +9,7 @@ pub fn GlobalCanvas(
     onmousemove: Option<EventHandler<MouseEvent>>,
     onmouseup: Option<EventHandler<MouseEvent>>,
     onwheel: Option<EventHandler<WheelEvent>>,
+    oncontextmenu: Option<EventHandler<MouseEvent>>,
     children: Element,
 ) -> Element {
     let store = use_context::<Signal<AppStore>>();
@@ -30,6 +31,7 @@ pub fn GlobalCanvas(
             onmousemove: move |e| if let Some(h) = &onmousemove { h.call(e) },
             onmouseup: move |e| if let Some(h) = &onmouseup { h.call(e) },
             onwheel: move |e| if let Some(h) = &onwheel { h.call(e) },
+            oncontextmenu: move |e| if let Some(h) = &oncontextmenu { h.call(e) },
 
             div { style: layer_style,
                 {children}

@@ -1,16 +1,16 @@
 use dioxus::prelude::*;
 
-mod state;
-mod views;
 mod components;
-mod tools;
+mod gen;
 mod models;
 mod settings;
+mod state;
+mod tools;
 mod util;
+mod views;
 
 use state::{AppStore, ViewType};
 use views::{edit::EditView, execute::ExecuteView};
-
 
 pub fn App() -> Element {
     let mut store = use_signal(AppStore::default);
@@ -18,7 +18,7 @@ pub fn App() -> Element {
 
     let current_view = store.read().current_view;
     let topbar_class = "nn-topbar";
-    
+
     rsx! {
         Stylesheet { href: asset!("/assets/main.css") }
         Stylesheet { href: asset!("/assets/view.css") }

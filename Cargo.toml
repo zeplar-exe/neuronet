@@ -9,6 +9,8 @@ dioxus = { version = "0.7.1", features = ["router", "html"] }
 console_error_panic_hook = "0.1"
 rand = "0.10.0"
 getrandom = { version = "0.4.1", features = ["wasm_js"] }
+generational-arena = "0.2.9"
+hex = "0.4.3"
 
 [features]
 default = ["desktop"]
