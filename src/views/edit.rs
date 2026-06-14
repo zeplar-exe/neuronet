@@ -1,3 +1,4 @@
+use crate::common::{Color, Rect};
 use crate::components::canvas::GlobalCanvas;
 use crate::components::circle::CircleNode;
 use crate::components::context_menu::GlobalContextMenu;
@@ -5,9 +6,10 @@ use crate::components::explorer::Explorer;
 use crate::components::properties::Properties;
 use crate::gen::generate_group_name;
 use crate::models::NeuronModelKind;
-use crate::state::{
-    AppStore, Color, ContextMenuTarget, Group, GroupId, IntegrateFireParams, Neuron, NeuronId, Rect, ViewType,
-};
+use crate::simulation::execution::IntegrateFireParams;
+use crate::simulation::id::{GroupId, NeuronId};
+use crate::simulation::network::Group;
+use crate::state::{AppStore, ContextMenuTarget, ViewType};
 use crate::tools::{tool_by_name, ToolContext, ToolRequest};
 use dioxus::html::geometry::ClientPoint;
 use dioxus::prelude::*;

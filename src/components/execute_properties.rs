@@ -1,6 +1,7 @@
 use crate::components::tooltip::{TooltipIndicator, TooltipKind};
 use crate::models::NeuronModelKind;
-use crate::state::{AppStore, NeuronId};
+use crate::simulation::id::NeuronId;
+use crate::state::AppStore;
 use crate::util::variant_eq;
 use dioxus::prelude::*;
 use std::collections::HashSet;

@@ -1,4 +1,5 @@
-use crate::state::{Rect, ViewType};
+use crate::common::Rect;
+use crate::state::ViewType;
 use crate::tools::{Tool, ToolContext, ToolRequest};
 use dioxus::prelude::*;
 

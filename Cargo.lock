@@ -2904,6 +2904,7 @@ dependencies = [
  "getrandom 0.4.1",
  "hex",
  "rand 0.10.0",
+ "slotmap",
 ]
 
 [[package]]

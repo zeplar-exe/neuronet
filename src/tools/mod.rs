@@ -2,7 +2,9 @@ pub mod add;
 pub mod edge;
 pub mod select;
 
-use crate::state::{AppStore, Neuron, NeuronId, Rect, ViewType};
+use crate::common::Rect;
+use crate::simulation::id::NeuronId;
+use crate::state::AppStore;
 use crate::tools::add::AddTool;
 use crate::tools::edge::EdgeTool;
 use crate::tools::select::SelectTool;

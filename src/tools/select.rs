@@ -1,4 +1,5 @@
-use crate::state::{Neuron, NeuronId, Rect};
+use crate::common::Rect;
+use crate::simulation::id::NeuronId;
 use crate::tools::{Tool, ToolContext};
 use dioxus::events::MouseEvent;
 use dioxus::prelude::*;

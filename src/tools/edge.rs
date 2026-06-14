@@ -1,7 +1,9 @@
 use std::collections::HashSet;
 
-use crate::state::{Neuron, NeuronId};
-use crate::tools::{Tool, ToolContext};
+use crate::{
+    simulation::id::NeuronId,
+    tools::{Tool, ToolContext},
+};
 use dioxus::prelude::*;
 
 pub struct EdgeTool {

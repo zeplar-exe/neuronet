@@ -1,9 +1,11 @@
 use dioxus::prelude::*;
 
+mod common;
 mod components;
 mod gen;
 mod models;
 mod settings;
+mod simulation;
 mod state;
 mod tools;
 mod util;

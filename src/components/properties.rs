@@ -1,8 +1,8 @@
 use crate::components::tooltip::{TooltipIndicator, TooltipKind};
 use crate::models::NeuronModelKind;
-use crate::state::{AppStore, NeuronId};
+use crate::simulation::id::NeuronId;
+use crate::state::AppStore;
 use crate::util::variant_eq;
-use dioxus::html::u::id;
 use dioxus::prelude::*;
 use std::collections::HashSet;
 
@@ -222,7 +222,7 @@ fn RenderNeuronProperties(store: Signal<AppStore>) -> Element {
             let oninput_min = {
                 move |e: FormEvent| {
                     let mut s = store.write();
-                    if let Ok(mut vmin) = e.value().parse::<f64>() {
+                    if let Ok(vmin) = e.value().parse::<f64>() {
                         if let Some((_, node)) = s.network.neurons.iter().find(|(i, _)| *i == nid) {
                             if variant_eq(&node.model, &NeuronModelKind::integrate_fire()) {
                                 let idx = node.state_index as usize;

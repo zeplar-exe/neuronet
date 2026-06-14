@@ -1,5 +1,6 @@
 use crate::gen::generate_group_name;
-use crate::state::{AppStore, ContextMenuTarget, GroupId, NeuronId};
+use crate::simulation::id::{GroupId, NeuronId};
+use crate::state::{AppStore, ContextMenuTarget};
 use dioxus::prelude::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -51,7 +52,7 @@ pub fn Explorer() -> Element {
 fn build_tree(store: &AppStore) -> Vec<TreeNode> {
     let mut buckets: HashMap<Option<GroupId>, Vec<TreeNode>> = Default::default();
 
-    for (id, group) in store.network.groups.iter() {
+    for (_, group) in store.network.groups.iter() {
         buckets.entry(group.parent).or_default().push(TreeNode {
             kind: TreeKind::Group,
             item_id: group.id,
@@ -60,7 +61,7 @@ fn build_tree(store: &AppStore) -> Vec<TreeNode> {
             children: vec![],
         });
     }
-    for (id, neuron) in store.network.neurons.iter() {
+    for (_, neuron) in store.network.neurons.iter() {
         buckets.entry(neuron.parent).or_default().push(TreeNode {
             kind: TreeKind::Neuron,
             item_id: neuron.id,

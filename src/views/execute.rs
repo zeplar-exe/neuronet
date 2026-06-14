@@ -1,7 +1,8 @@
 use crate::components::circle::CircleNode;
 use crate::components::execute_properties::ExecuteProperties;
 use crate::components::explorer::Explorer;
-use crate::state::{AppStore, Neuron, ViewType};
+use crate::simulation::network::Neuron;
+use crate::state::{AppStore, ViewType};
 use crate::tools::{tool_by_name, ToolContext};
 use dioxus::prelude::*;
 
