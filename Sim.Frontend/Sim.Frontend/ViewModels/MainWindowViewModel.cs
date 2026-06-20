@@ -1,6 +1,98 @@
-﻿namespace Sim.Frontend.ViewModels;
+﻿using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using Avalonia;
+using Avalonia.Controls.ApplicationLifetimes;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Sim.Frontend.Models;
+using Sim.Frontend.Views;
+
+namespace Sim.Frontend.ViewModels;
 
 public partial class MainWindowViewModel : ViewModelBase
 {
-    public string Greeting { get; } = "Welcome to Avalonia!";
+    public BuildView BuildView { get; }
+    public ExecuteView ExecuteView { get; }
+    public AnalyzeView AnalyzeView { get; }
+
+    public ObservableCollection<string> ViewTabSource =>
+    [
+        "Build",
+        "Execute",
+        "Analyze"
+    ];
+    
+    [ObservableProperty]
+    public partial string SelectedViewTab { get; set; } = "Build";
+
+    public WorkspaceView CurrentView
+    {
+        get;
+        set
+        {
+            field = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(BuildViewOpen));
+            OnPropertyChanged(nameof(ExecuteViewOpen));
+            OnPropertyChanged(nameof(AnalyzeViewOpen));
+        }
+    }
+
+    public ObservableCollection<Node> Nodes { get; } = [];
+    public ObservableCollection<Edge> Edges { get; } = [];
+    public ObservableCollection<Node> Selected { get; } = [];
+    
+    public bool BuildViewOpen => CurrentView == BuildView;
+    public bool ExecuteViewOpen => CurrentView == ExecuteView;
+    public bool AnalyzeViewOpen => CurrentView == AnalyzeView;
+
+    public MainWindowViewModel()
+    {
+        BuildView = new BuildView(Nodes, Edges, Selected);
+        ExecuteView = new ExecuteView(Nodes, Edges, Selected);
+        AnalyzeView = new AnalyzeView(Nodes, Edges, Selected);
+        CurrentView = BuildView;
+    }
+    
+    [RelayCommand]
+    public void OpenSettings()
+    {
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: { } main})
+        {
+            var window = new SettingsWindow();
+            
+            window.ShowDialog(main);
+        }
+    }
+
+    [RelayCommand]
+    public void Exit()
+    {
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            desktop.Shutdown();
+        }
+    }
+
+    protected override void OnPropertyChanged(PropertyChangedEventArgs e)
+    {
+        base.OnPropertyChanged(e);
+        
+        if (e.PropertyName == nameof(SelectedViewTab))
+        {
+            switch (SelectedViewTab)
+            {
+                case "Build":
+                    CurrentView = BuildView;
+                    break;
+                case "Execute":
+                    CurrentView = ExecuteView;
+                    break;
+                case "Analyze":
+                    CurrentView = AnalyzeView;
+                    break;
+            }
+        }
+    }
 }

@@ -3,18 +3,91 @@
         xmlns:vm="using:Sim.Frontend.ViewModels"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:views="clr-namespace:Sim.Frontend.Views"
         mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
         x:Class="Sim.Frontend.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Icon="/Assets/avalonia-logo.ico"
         Title="Sim.Frontend">
-
     <Design.DataContext>
-        <!-- This only sets the DataContext for the previewer in an IDE,
-             to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
         <vm:MainWindowViewModel/>
     </Design.DataContext>
-
-    <TextBlock Text="{Binding Greeting}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-
+    
+    <DockPanel>
+        <Menu DockPanel.Dock="Top">
+            <MenuItem Header="_File">
+                <MenuItem Header="_New"></MenuItem>
+                <MenuItem Header="_Open"></MenuItem>
+                <Separator/>
+                <MenuItem Header="_Save"></MenuItem>
+                <MenuItem Header="S_ave As"></MenuItem>
+                <Separator/>
+                <MenuItem Header="Exit" Command="{Binding ExitCommand}"></MenuItem>
+            </MenuItem>
+            <MenuItem Header="Edit">
+                <MenuItem Header="_Undo"></MenuItem>
+                <MenuItem Header="_Redo"></MenuItem>
+                <Separator/>
+                <MenuItem Header="Cu_t"></MenuItem>
+                <MenuItem Header="_Copy"></MenuItem>
+                <MenuItem Header="_Paste"></MenuItem>
+                <Separator/>
+                <MenuItem Header="Settings" Command="{Binding OpenSettingsCommand}"></MenuItem>
+            </MenuItem>
+        </Menu>
+        
+        <DockPanel DockPanel.Dock="Bottom">
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" HorizontalAlignment="Stretch">
+                <ContentControl Content="{Binding CurrentView.ToolbarPanel}"></ContentControl>
+            </StackPanel>
+            <Border DockPanel.Dock="Left" BorderThickness="0,0,1,0" BorderBrush="Red">
+                <StackPanel>
+                    <TextBlock>Explorer</TextBlock>
+                    <Separator/>
+                    <TreeView ItemsSource="{Binding Nodes}">
+                        <TreeView.ItemTemplate>
+                            <TreeDataTemplate ItemsSource="{Binding Children}">
+                                <StackPanel Orientation="Horizontal" 
+                                            ContextMenu="{Binding ViewModel.CurrentView.ExplorerContextMenu,
+                                            RelativeSource={RelativeSource AncestorType=views:MainWindow}}">
+                                    <TextBlock Text="{Binding DisplayName}"></TextBlock>
+                                </StackPanel>
+                            </TreeDataTemplate>
+                        </TreeView.ItemTemplate>
+                    </TreeView>
+                </StackPanel>
+            </Border>
+            <ContentControl DockPanel.Dock="Right">
+                <Border BorderThickness="1,0,0,0" BorderBrush="Red">
+                    <StackPanel>
+                        <TextBlock>Properties</TextBlock>
+                        <Separator/>
+                        <ContentControl Content="{Binding CurrentView.PropertiesPanel}"></ContentControl>
+                    </StackPanel>
+                </Border>
+            </ContentControl>
+            <DockPanel>
+                <TabControl DockPanel.Dock="Top" 
+                            SelectedItem="{Binding SelectedViewTab}" 
+                            ItemsSource="{Binding ViewTabSource}">
+                    <TabControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}"></TextBlock>
+                        </DataTemplate>
+                    </TabControl.ItemTemplate>
+                    <TabControl.ContentTemplate>
+                        <DataTemplate></DataTemplate>
+                    </TabControl.ContentTemplate>
+                </TabControl>
+                <StackPanel>
+                    <ContentControl IsVisible="{Binding BuildViewOpen}" 
+                                    Content="{Binding BuildView}"></ContentControl>
+                    <ContentControl IsVisible="{Binding ExecuteViewOpen}" 
+                                    Content="{Binding ExecuteView}"></ContentControl>
+                    <ContentControl IsVisible="{Binding AnalyzeViewOpen}" 
+                                    Content="{Binding AnalyzeView}"></ContentControl>
+                </StackPanel>
+            </DockPanel>
+        </DockPanel>
+    </DockPanel>
 </Window>
