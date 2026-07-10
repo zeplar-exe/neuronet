@@ -2,110 +2,13 @@ use std::collections::HashSet;
 
 use generational_arena::{Arena, Index};
 
-use crate::common::{Color, Position, Rect};
 use crate::models::NeuronModelKind;
 use crate::settings::{AppSettings, SimulationSettings};
 use crate::simulation::id::{GroupId, NeuronId, StateIndex, SynapseId};
 use crate::simulation::network::{Group, Network, Neuron, Synapse};
 use crate::util::variant_eq;
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum ContextMenuTarget {
-    Neuron(NeuronId),
-    Group(GroupId),
-    Canvas,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct ContextMenuState {
-    pub x: f64,
-    pub y: f64,
-    pub target: ContextMenuTarget,
-    pub name: Option<String>,
-}
-
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub enum ViewType {
-    EDIT,
-    EXECUTE,
-}
-
-#[derive(Clone)]
-pub struct ViewState {
-    pub selected_tool: &'static str,
-}
-
-impl Default for ViewState {
-    fn default() -> Self {
-        Self { selected_tool: "add" }
-    }
-}
-
-#[derive(Clone)]
-pub struct PanAnim {
-    pub start_offset: Position,
-    pub target_offset: Position,
-    pub start_ms: f64,
-    pub duration_ms: f64,
-}
-
-impl PanAnim {
-    pub fn new(start_offset: Position, target_offset: Position, duration_ms: f64, start_ms: f64) -> Self {
-        Self {
-            start_offset,
-            target_offset,
-            start_ms,
-            duration_ms,
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct AppStore {
-    pub current_view: ViewType,
-    pub network: Network,
-    pub selected: HashSet<NeuronId>,
-    pub selected_groups: HashSet<GroupId>,
-    pub edit_view: ViewState,
-    pub execute_view: ViewState,
-    pub canvas_offset: Position,
-    pub canvas_zoom: f64,
-    pub pan_anim: Option<PanAnim>,
-    pub app_time_ms: f64,
-    pub app_settings: AppSettings,
-    pub sim_settings: SimulationSettings,
-    pub context_menu: Option<ContextMenuState>,
-}
-
-impl Default for AppStore {
-    fn default() -> Self {
-        Self {
-            current_view: ViewType::EDIT,
-            network: Network::default(),
-            selected: HashSet::default(),
-            selected_groups: HashSet::default(),
-            edit_view: ViewState::default(),
-            execute_view: ViewState {
-                selected_tool: "select",
-            },
-            canvas_offset: (0.0, 0.0),
-            canvas_zoom: 1.0,
-            pan_anim: None,
-            app_time_ms: 0.0,
-            app_settings: AppSettings::default(),
-            sim_settings: SimulationSettings::default(),
-            context_menu: None,
-        }
-    }
-}
-
 impl AppStore {
-    pub fn open_context_menu(&mut self, x: f64, y: f64, target: ContextMenuTarget, name: Option<String>) {
-        self.context_menu = Some(ContextMenuState { x, y, target, name });
-    }
-    pub fn close_context_menu(&mut self) {
-        self.context_menu = None;
-    }
     pub fn get_selected_neurons(&self) -> Vec<&Neuron> {
         self.network
             .neurons
@@ -196,18 +99,6 @@ impl AppStore {
         } else {
             self.canvas_offset = target_offset;
             self.pan_anim = None;
-        }
-    }
-    pub fn set_tool(&mut self, view: ViewType, tool: &'static str) {
-        match view {
-            ViewType::EDIT => self.edit_view.selected_tool = tool,
-            ViewType::EXECUTE => self.execute_view.selected_tool = tool,
-        }
-    }
-    pub fn set_view_state(&self, view: ViewType) -> &ViewState {
-        match view {
-            ViewType::EDIT => &self.edit_view,
-            ViewType::EXECUTE => &self.execute_view,
         }
     }
 
@@ -354,21 +245,6 @@ impl AppStore {
                 }
             }
         }
-    }
-
-    pub fn delete_neuron(&mut self, id: NeuronId) {
-        self.network.remove_neuron(id);
-        self.selected.remove(&id);
-    }
-
-    pub fn delete_edge(&mut self, id: SynapseId) {
-        self.network.synapses.retain(|_, e| e.id != id);
-    }
-
-    pub fn delete_group_recursive(&mut self, id: GroupId) {
-        self.network.remove_group(id);
-        self.selected.clear();
-        self.selected_groups.retain(|gid| *gid != id);
     }
 
     pub fn get_next_state_index(&self, model: &NeuronModelKind) -> StateIndex {
