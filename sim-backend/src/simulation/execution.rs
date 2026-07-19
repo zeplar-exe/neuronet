@@ -1,226 +1,242 @@
-pub type Current = i16;
+use std::collections::HashMap;
 
-use std::collections::{HashMap, HashSet};
-
-use crate::simulation::{
-    id::{NeuronId, SynapseId},
-    network::{get_threshold, get_voltage, set_voltage, Network, Runstate, Voltage},
+use crate::{
+    models::NeuronModelKind,
+    simulation::{
+        events::{CurrentApplyEvent, EventContainer, SpikeEvent},
+        id::NeuronId,
+        network::{Current, Network, Time, Voltage},
+        state::{
+            get_integrate_fire_state, get_izhikevich_state, get_lif_state, set_integrate_fire_state,
+            set_izhikevich_state, set_lif_state, Runstate,
+        },
+    },
+    util::variant_eq,
 };
 
-const TIME_CONV: f32 = 10e-4 as f32;
-
-pub struct VoltageStimulus {
-    pub neuron_id: NeuronId,
-    pub voltage: Voltage,
-}
-
-pub struct CurrentStimulus {
-    pub neuron_id: NeuronId,
-    pub current: Current,
-}
-
+#[derive(Clone, Default)]
 pub struct StimulusContainer {
-    pub voltage_stimuli: HashMap<NeuronId, VoltageStimulus>,
-    pub current_stimuli: HashMap<NeuronId, CurrentStimulus>,
+    pub current_stimuli: HashMap<NeuronId, Current>,
 }
 
-pub fn set_voltage_stimulus(stimuli: *mut StimulusContainer, neuron_id: NeuronId, voltage: Voltage) {
+#[no_mangle]
+pub extern "C" fn create_stimulus_container() -> *mut StimulusContainer {
+    return Box::into_raw(Box::new(StimulusContainer::default()));
+}
+
+#[no_mangle]
+pub extern "C" fn destroy_stimulus_container(container: *mut StimulusContainer) {
     unsafe {
-        (*stimuli)
-            .voltage_stimuli
-            .insert(neuron_id, VoltageStimulus { neuron_id, voltage });
+        drop(Box::from_raw(container));
     }
 }
 
-pub fn set_current_stimulus(stimuli: *mut StimulusContainer, neuron_id: NeuronId, current: Current) {
+#[no_mangle]
+pub extern "C" fn get_voltage(network: *const Network, runstate: *mut Runstate, id: NeuronId) -> Voltage {
     unsafe {
-        (*stimuli)
-            .current_stimuli
-            .insert(neuron_id, CurrentStimulus { neuron_id, current });
+        let neuron = (*network).neurons.get(&id).unwrap();
+
+        match &neuron.model {
+            NeuronModelKind::IntegrateFire => get_integrate_fire_state(runstate, id).voltage,
+            NeuronModelKind::LIF => get_lif_state(runstate, id).voltage,
+            NeuronModelKind::Izhikevich => get_izhikevich_state(runstate, id).voltage,
+        }
     }
 }
 
-pub fn step_single(
+#[no_mangle]
+pub extern "C" fn get_threshold(network: *const Network, runstate: *mut Runstate, id: NeuronId) -> Voltage {
+    unsafe {
+        let neuron = (*network).neurons.get(&id).unwrap();
+
+        match &neuron.model {
+            NeuronModelKind::IntegrateFire => get_integrate_fire_state(runstate, id).threshold,
+            NeuronModelKind::LIF => get_lif_state(runstate, id).threshold,
+            NeuronModelKind::Izhikevich => get_izhikevich_state(runstate, id).threshold,
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn set_voltage(network: *const Network, runstate: *mut Runstate, id: NeuronId, voltage: Voltage) {
+    unsafe {
+        let neuron = (*network).neurons.get(&id).unwrap();
+        let if_state = (*runstate).integrate_fire.get_mut(&id).unwrap();
+        match &neuron.model {
+            NeuronModelKind::IntegrateFire => if_state.voltage = voltage,
+            NeuronModelKind::LIF => get_lif_state(runstate, id).voltage = voltage,
+            NeuronModelKind::Izhikevich => get_izhikevich_state(runstate, id).voltage = voltage,
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn runstate_remove_neuron(network: *const Network, runstate: *mut Runstate, id: NeuronId) {
+    unsafe {
+        let model = (*network).neurons.get(&id).unwrap().model.clone();
+
+        if variant_eq(&model, &NeuronModelKind::IntegrateFire) {
+            (*runstate).integrate_fire.remove(&id);
+        } else if variant_eq(&model, &NeuronModelKind::LIF) {
+            (*runstate).lif.remove(&id);
+        } else if variant_eq(&model, &NeuronModelKind::Izhikevich) {
+            (*runstate).izhikevich.remove(&id);
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn set_current_stimulus(stimuli: *mut StimulusContainer, neuron_id: NeuronId, current: Current) {
+    unsafe {
+        (*stimuli).current_stimuli.insert(neuron_id, current);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn step(
     network: *mut Network,
     runstate: *mut Runstate,
     stimuli: *const StimulusContainer,
-    dt: i16, // dt in 10e-4
+    events: *mut EventContainer,
 ) -> *mut Runstate {
-    let fdt = dt as f32 * TIME_CONV;
-    let mut fired: HashSet<NeuronId> = HashSet::default();
+    // step in 1e-4 s
 
     unsafe {
-        for (neuron_id, stimulus) in (*stimuli).voltage_stimuli.iter() {
-            let voltage = get_voltage(network, *neuron_id);
-            set_voltage(network, *neuron_id, voltage + stimulus.voltage);
+        for (neuron_id, neuron) in (*network).neurons.iter() {
+            let mut fired = false;
+
+            match neuron.model {
+                NeuronModelKind::IntegrateFire => {
+                    let mut state = get_integrate_fire_state(runstate, *neuron_id);
+                    if state.voltage >= state.threshold {
+                        (*events).spikes.push(SpikeEvent {
+                            timestamp: (*runstate).timestamp,
+                            neuron_id: *neuron_id,
+                            voltage: state.voltage,
+                        });
+                        state.voltage = state.reset_potential;
+
+                        fired = true;
+                    }
+                }
+                NeuronModelKind::LIF => {
+                    let mut state = get_lif_state(runstate, *neuron_id);
+                    if state.voltage >= state.threshold {
+                        (*events).spikes.push(SpikeEvent {
+                            timestamp: (*runstate).timestamp,
+                            neuron_id: *neuron_id,
+                            voltage: state.voltage,
+                        });
+                        state.voltage = state.reset_potential;
+
+                        fired = true;
+                    }
+                }
+                NeuronModelKind::Izhikevich => {
+                    let mut state = get_izhikevich_state(runstate, *neuron_id);
+                    if state.voltage >= state.threshold {
+                        (*events).spikes.push(SpikeEvent {
+                            timestamp: (*runstate).timestamp,
+                            neuron_id: *neuron_id,
+                            voltage: state.voltage,
+                        });
+                        state.voltage = state.reset_potential;
+                        state.recovery_var = state.recovery_var + state.d_var;
+
+                        fired = true;
+                        // hmm.. well, we need to do the current additive stuff directly in here
+                        // instead of globally.. so the question is how did izhikevich and co. do
+                        // their simulation? as in, what determines the amount of current that
+                        // comes from an incoming synapse (this can be found in stdp.pdf)
+                    }
+                }
+            }
+
+            if fired {
+                for synapse_id in (*neuron).outgoing.iter() {
+                    (*runstate)
+                        .synapse_propagation
+                        .entry(*synapse_id)
+                        .or_insert(vec![])
+                        .push(0);
+                }
+            }
         }
+
+        let apply_stimulus = |id: NeuronId, stimulus: Current| {
+            if (*runstate).neuron_refractory.contains_key(&id) {
+                return;
+            }
+
+            let neuron = (*network).neurons.get(&id).unwrap();
+
+            match neuron.model {
+                NeuronModelKind::IntegrateFire => {
+                    let mut state = get_integrate_fire_state(runstate, id);
+                    state.voltage += stimulus;
+                    set_integrate_fire_state(runstate, id, *state);
+                }
+                NeuronModelKind::LIF => {}
+                NeuronModelKind::Izhikevich => {
+                    let mut state = get_izhikevich_state(runstate, id);
+                    let v = state.voltage as f64 * 1e-4;
+                    let i = stimulus as f64;
+                    let dv = 0.04 * (v * v) + 5.0 * v + 140.0 - state.recovery_var + i;
+                    let du = state.a_var * (state.b_var * v - state.recovery_var);
+
+                    state.voltage += dv; //dv.round() as Voltage;
+                    state.recovery_var += du; //du.round() as f32;
+
+                    set_izhikevich_state(runstate, id, *state);
+                }
+            }
+        };
 
         for (neuron_id, stimulus) in (*stimuli).current_stimuli.iter() {
-            let voltage = get_voltage(network, *neuron_id);
-            set_voltage(network, *neuron_id, max(int(voltage + stimulus.current * fdt), 1));
+            apply_stimulus(*neuron_id, *stimulus);
         }
 
-        for (synapse_id, prop) in (*runstate).synapse_propagation.iter() {
+        for (synapse_id, prop) in (*runstate).synapse_propagation.iter_mut() {
             let synapse = (*network).synapses.get(synapse_id).unwrap();
-            let update_indices: Vec<f32> = vec![];
-            for (i, p) in prop.iter().enumerate() {
-                if *p >= 1.0 {
-                    update_indices.push(-1.0);
-                    let voltage = get_voltage(network, synapse.target);
-                    set_voltage(network, synapse.target, voltage + synapse.weight);
+            let mut update_indices: Vec<i8> = vec![];
+            for p in prop.iter() {
+                if (*p + 1) >= synapse.conduction_time {
+                    update_indices.push(-1);
                 } else {
-                    update_indices.push(*p);
+                    update_indices.push(1);
                 }
             }
             for (idx, v) in update_indices.iter().enumerate() {
-                if *v == -1.0 {
+                if *v == -1 {
+                    apply_stimulus(synapse.target, synapse.strength);
                     continue;
                 }
-                prop[idx] += v;
+                prop[idx] += 1;
             }
-            prop.retain(|x| *x != -1.0);
+            let mut i = 0;
+            prop.retain(|_| {
+                i += 1;
+                update_indices[i - 1] != -1
+            });
         }
 
-        for (neuron_id, prop) in (*runstate).neuron_propagation.iter_mut() {
+        let refractory_remove_indices: Vec<&NeuronId> = vec![];
+
+        for (neuron_id, refractory) in (*runstate).neuron_refractory.iter_mut() {
             let neuron = (*network).neurons.get(neuron_id).unwrap();
-            let update_indices: Vec<f32> = vec![];
-            for (i, p) in prop.iter().enumerate() {
-                if *p >= 1.0 {
-                    update_indices.push(-1.0);
-                    for synapse_id in (*neuron).outgoing.iter() {
-                        (*runstate).synapse_propagation.entry(*synapse_id).or_insert(vec![]);
-                        (*runstate).synapse_propagation[synapse_id].push(0.0);
-                    }
-                } else {
-                    update_indices.push(*p);
-                }
-            }
-            for (idx, v) in update_indices.iter().enumerate() {
-                if *v == -1.0 {
-                    continue;
-                }
-                prop[idx] += v;
-            }
-            prop.retain(|x| *x != -1.0);
-        }
-
-        for (neuron_id, neuron) in (*network).neurons.iter() {
-            let voltage = get_voltage(network, *neuron_id);
-            let threshold = get_threshold(network, *neuron_id);
-
-            if voltage >= threshold {
-                let fired = true;
-
-                // handle firing logic per neuron model
-
-                if fired {
-                    (*runstate).neuron_propagation.entry(*neuron_id).or_insert(vec![]);
-                    (*runstate).neuron_propagation[neuron_id].push(0.0);
-                }
+            if *refractory < neuron.refractory_period {
+                *refractory += 1;
+            } else {
+                refractory_remove_indices.push(neuron_id);
             }
         }
+
+        for neuron_id in refractory_remove_indices {
+            (*runstate).neuron_refractory.remove(neuron_id);
+        }
+
+        (*runstate).timestamp += 1;
     }
 
     return runstate;
-}
-
-pub fn step_roll(
-    network: *mut Network,
-    runstate: *mut Runstate,
-    stimuli: *const StimulusContainer,
-    dt: i16, // dt in 10e-4
-) -> *mut Runstate {
-    unsafe {
-        let fdt = dt as f32 * TIME_CONV;
-        let mut seen: HashSet<NeuronId> = HashSet::default();
-        let mut fired: HashSet<NeuronId> = HashSet::default();
-
-        let conduct_neuron;
-        let conduct_synapse;
-        let fire_neuron;
-
-        for (neuron_id, stimulus) in (*stimuli).voltage_stimuli.iter() {
-            let voltage = get_voltage(network, *neuron_id);
-            set_voltage(network, *neuron_id, voltage + stimulus.voltage);
-            seen.insert(*neuron_id);
-
-            if voltage > get_threshold(network, *neuron_id) {
-                (*runstate).neuron_propagation.insert(*neuron_id, 0.0);
-                conduct_neuron(*neuron_id, fdt);
-            }
-        }
-
-        for (neuron_id, stimulus) in (*stimuli).current_stimuli.iter() {
-            let voltage = get_voltage(network, *neuron_id);
-            set_voltage(network, *neuron_id, voltage + stimulus.current * fdt);
-
-            if voltage > get_threshold(network, *neuron_id) {
-                (*runstate).neuron_propagation.insert(*neuron_id, 0.0);
-                conduct_neuron(*neuron_id, fdt);
-            }
-        }
-
-        let conduct_neuron = |id: NeuronId, remaining_dt: f32| {
-            let neuron = (*network).neurons.get(&id).unwrap();
-            let prop = (*runstate).neuron_propagation.get(&id).unwrap_or(-1.0 as f32);
-
-            if *prop == -1.0 {
-                return;
-            }
-
-            let cond_vel = neuron.conduction_velocity;
-            let prop_remaining = 1.0 - *prop;
-
-            if cond_vel * remaining_dt >= prop_remaining {
-                remaining_dt -= cond_vel / prop_remaining;
-                for outgoing in neuron.outgoing.iter() {
-                    let synapse = (*network).synapses.get(outgoing).unwrap();
-                    let synapse_prop = (*runstate).synapse_propagation.get(outgoing).unwrap_or(&0.0);
-
-                    conduct_synapse(synapse, remaining_dt);
-                }
-
-                (*runstate).neuron_propagation.insert(id, 0.0);
-            } else {
-                remaining_dt -= cond_vel * prop_remaining;
-                (*runstate)
-                    .neuron_propagation
-                    .insert(id, *prop + cond_vel * remaining_dt);
-            }
-        };
-
-        let conduct_synapse = |id: SynapseId, remaining_dt: f32| {
-            let synapse = (*network).synapses.get(&id).unwrap();
-            let prop = (*runstate).synapse_propagation.get(&id).unwrap_or(&-1.0);
-
-            if *prop == -1.0 {
-                return;
-            }
-
-            let cond_vel = synapse.conduction_velocity;
-            let prop_remaining = 1.0 - *prop;
-
-            if cond_vel * remaining_dt >= prop_remaining {
-                remaining_dt -= cond_vel / prop_remaining;
-
-                fire_neuron(synapse.target, remaining_dt);
-
-                (*runstate).synapse_propagation.remove(&id);
-            } else {
-                remaining_dt -= cond_vel * prop_remaining;
-                (*runstate)
-                    .synapse_propagation
-                    .insert(id, *prop + cond_vel * remaining_dt);
-            }
-        };
-
-        let fire_neuron = |id: NeuronId, remaining_dt: f32| {
-            let neuron = (*network).neurons.get(&id).unwrap();
-
-            // need to implement the neuron models here
-            // then conduct to any synapses if need be
-        };
-
-        runstate
-    }
 }

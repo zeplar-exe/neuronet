@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:views="clr-namespace:Sim.Frontend.Views"
+        xmlns:models="clr-namespace:Sim.Frontend.Models"
         mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
         x:Class="Sim.Frontend.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
@@ -45,15 +46,23 @@
                     <TextBlock>Explorer</TextBlock>
                     <Separator/>
                     <TreeView ItemsSource="{Binding Nodes}">
-                        <TreeView.ItemTemplate>
-                            <TreeDataTemplate ItemsSource="{Binding Children}">
+                        <TreeView.DataTemplates>
+                            <TreeDataTemplate DataType="models:Group" ItemsSource="{Binding Children}">
                                 <StackPanel Orientation="Horizontal" 
                                             ContextMenu="{Binding ViewModel.CurrentView.ExplorerContextMenu,
                                             RelativeSource={RelativeSource AncestorType=views:MainWindow}}">
-                                    <TextBlock Text="{Binding DisplayName}"></TextBlock>
+                                    <TextBlock Text="{Binding Name}"></TextBlock>
                                 </StackPanel>
                             </TreeDataTemplate>
-                        </TreeView.ItemTemplate>
+                            
+                            <TreeDataTemplate DataType="models:Node">
+                                <StackPanel Orientation="Horizontal" 
+                                            ContextMenu="{Binding ViewModel.CurrentView.ExplorerContextMenu,
+                                            RelativeSource={RelativeSource AncestorType=views:MainWindow}}">
+                                    <TextBlock Text="{Binding Name}"></TextBlock>
+                                </StackPanel>
+                            </TreeDataTemplate>
+                        </TreeView.DataTemplates>
                     </TreeView>
                 </StackPanel>
             </Border>

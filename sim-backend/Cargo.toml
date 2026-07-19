@@ -4,17 +4,17 @@ version = "0.1.0"
 authors = ["Zander Baker <zanderbaker100@gmail.com>"]
 edition = "2021"
 
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+[lib]
+name="nn_lib"
+crate-type = ["rlib", "dylib"]
+
 [dependencies]
-dioxus = { version = "0.7.1", features = ["router", "html"] }
-console_error_panic_hook = "0.1"
 rand = "0.10.0"
 getrandom = { version = "0.4.1", features = ["wasm_js"] }
 generational-arena = "0.2.9"
 hex = "0.4.3"
-slotmap = "1.1.1"
-
-[features]
-default = ["desktop"]
-web = ["dioxus/web"]
-desktop = ["dioxus/desktop"]
-mobile = ["dioxus/mobile"]

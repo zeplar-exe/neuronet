@@ -23,6 +23,11 @@ public partial class BuildView : WorkspaceView
     protected override void OnMeasureInvalidated()
     {
         base.OnMeasureInvalidated();
+        
+        // there can be items in the explorer that aren't visible in the workspace
+            // items in the explorer that aren't visible in the workspace are grabbed, can be panned to
+        // in general, on panning/zooming (handled in base class), have to invalidate *slowly*
+        
     }
 
     public override void Render(DrawingContext context)
