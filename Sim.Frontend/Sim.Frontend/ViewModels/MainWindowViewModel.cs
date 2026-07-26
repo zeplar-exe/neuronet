@@ -39,7 +39,8 @@ public partial class MainWindowViewModel : ViewModelBase
         }
     }
 
-    public ObservableCollection<Node> Nodes { get; } = [];
+    public Workspace Workspace { get; }
+    public ObservableCollection<INode> Nodes { get; } = [];
     public ObservableCollection<Edge> Edges { get; } = [];
     public ObservableCollection<Node> Selected { get; } = [];
     
@@ -49,9 +50,17 @@ public partial class MainWindowViewModel : ViewModelBase
 
     public MainWindowViewModel()
     {
-        BuildView = new BuildView(Nodes, Edges, Selected);
-        ExecuteView = new ExecuteView(Nodes, Edges, Selected);
-        AnalyzeView = new AnalyzeView(Nodes, Edges, Selected);
+        Workspace = new Workspace("Workspace", "./");
+        Nodes = Workspace.Nodes;
+        Edges = Workspace.Edges;
+        Nodes.Add(new Node());
+        Nodes.Add(new Node());
+        Nodes.Add(new Node());
+        Nodes.Add(new Node());
+        
+        BuildView = new BuildView(Workspace, Selected);
+        ExecuteView = new ExecuteView(Workspace, Selected);
+        AnalyzeView = new AnalyzeView(Workspace, Selected);
         CurrentView = BuildView;
     }
     

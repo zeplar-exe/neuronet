@@ -4,7 +4,8 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:views="clr-namespace:Sim.Frontend.Views"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
-             x:Class="Sim.Frontend.Views.BuildView">
+             x:Class="Sim.Frontend.Views.BuildView"
+             Background="Transparent">
     <views:WorkspaceView.PropertiesPanel>
         <Control></Control>
     </views:WorkspaceView.PropertiesPanel>
@@ -15,15 +16,14 @@
         <StackPanel Orientation="Horizontal">
             <StackPanel Orientation="Vertical">
                 <StackPanel Orientation="Horizontal">
-                    <Button>CN</Button>
-                    <Button>CE</Button>
+                    <Button>CrNe</Button>
+                    <Button>CrSy</Button>
                 </StackPanel>
                 <StackPanel>
-                    <Button>DE</Button>
+                    <Button>DEL</Button>
                 </StackPanel>
             </StackPanel>
-            <Button>CP</Button>
-            <Button>CO</Button>
+            <Button>CrPo</Button>
         </StackPanel>
     </views:WorkspaceView.ToolbarPanel>
     Test

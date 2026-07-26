@@ -1,6 +1,5 @@
-use crate::simulation::{id::NeuronId, network::Voltage};
+use crate::simulation::network::{NeuronId, Voltage};
 
-#[repr(C)]
 pub struct EventContainer {
     pub spikes: Vec<SpikeEvent>,
 }
@@ -27,4 +26,18 @@ pub extern "C" fn destroy_event_container(container: *mut EventContainer) {
 #[no_mangle]
 pub extern "C" fn clear_events(container: &mut EventContainer) {
     container.spikes.clear();
+}
+
+#[no_mangle]
+pub extern "C" fn get_spike_count(container: *const EventContainer) -> usize {
+    unsafe { (*container).spikes.len() }
+}
+
+#[no_mangle]
+pub extern "C" fn get_spike(container: *const EventContainer, index: usize) -> SpikeEvent {
+    unsafe {
+        let spikes = &(*container).spikes;
+        let s = &spikes[index];
+        SpikeEvent { neuron_id: s.neuron_id, timestamp: s.timestamp, voltage: s.voltage }
+    }
 }

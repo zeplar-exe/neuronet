@@ -12,11 +12,12 @@ public class Node : INode
         "Xi", "Omicron", "Pi", "Rho", "Sigma", "Tau", "Upsilon", "Phi", "Chi", "Psi", "Omega",
     ];
     
-    public NeuronData Neuron { get; set; }
+    public uint Id { get; set; }
+    public string Model { get; set; } = string.Empty;
     public string Name { get; set; }
-    public int Parent { get; set; }
-    public int PositionX { get; set; }
-    public int PositionY { get; set; }
+    public Group? Parent { get; set; }
+    public double PositionX { get; set; }
+    public double PositionY { get; set; }
 
     public Node()
     {

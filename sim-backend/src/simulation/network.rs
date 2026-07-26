@@ -1,9 +1,12 @@
-use std::collections::HashMap;
 use std::ffi::c_uchar;
 
+use rustc_hash::FxHashMap;
+
 use crate::models::NeuronModelKind;
-use crate::simulation::id::{NeuronId, SynapseId};
-use crate::util::ByteBuffer;
+use crate::util::{ByteBuffer, NeuronBuffer, SynapseBuffer};
+
+pub type NeuronId = u32;
+pub type SynapseId = u32;
 
 pub type Voltage = f64;
 pub type Current = f64;
@@ -27,17 +30,21 @@ pub struct Synapse {
 
 #[derive(Clone, Default)]
 pub struct Network {
-    pub neurons: HashMap<NeuronId, Neuron>,
-    pub synapses: HashMap<SynapseId, Synapse>,
+    pub neurons: FxHashMap<NeuronId, Neuron>,
+    pub synapses: FxHashMap<SynapseId, Synapse>,
+    next_neuron_id: NeuronId,
+    next_synapse_id: SynapseId,
 }
 
 impl Network {
-    pub fn next_neuron_id(&self) -> NeuronId {
-        self.neurons.len()
+    pub fn next_neuron_id(&mut self) -> NeuronId {
+        self.next_neuron_id += 1;
+        self.next_neuron_id - 1
     }
 
-    pub fn next_synapse_id(&self) -> SynapseId {
-        self.synapses.len()
+    pub fn next_synapse_id(&mut self) -> SynapseId {
+        self.next_synapse_id += 1;
+        self.next_synapse_id - 1
     }
 }
 
@@ -64,6 +71,30 @@ pub extern "C" fn serialize_network(network: *const Network) -> ByteBuffer {
 #[no_mangle]
 pub extern "C" fn deserialize_network(data: *const c_uchar, length: usize) -> *mut Network {
     return Box::into_raw(Box::new(Network::default()));
+}
+
+#[no_mangle]
+pub extern "C" fn get_neurons(network: *const Network) -> NeuronBuffer {
+    unsafe {
+        let neurons = (*network).neurons.keys().copied().collect::<Vec<_>>();
+        let leaked = std::mem::ManuallyDrop::new(neurons);
+        return NeuronBuffer {
+            data: leaked.as_ptr(),
+            len: (*network).neurons.len(),
+        };
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn get_synapses(network: *const Network) -> SynapseBuffer {
+    unsafe {
+        let synapses = (*network).synapses.keys().copied().collect::<Vec<_>>();
+        let leaked = std::mem::ManuallyDrop::new(synapses);
+        return SynapseBuffer {
+            data: leaked.as_ptr(),
+            len: (*network).synapses.len(),
+        };
+    }
 }
 
 #[no_mangle]
@@ -150,7 +181,7 @@ pub extern "C" fn network_remove_neuron(network: *mut Network, id: NeuronId) {
 }
 
 #[no_mangle]
-pub extern "C" fn remove_synapse(network: *mut Network, id: SynapseId) {
+pub extern "C" fn network_remove_synapse(network: *mut Network, id: SynapseId) {
     unsafe {
         let synapse = (*network).synapses.remove(&id);
         if let Some(synapse) = synapse {
@@ -162,6 +193,21 @@ pub extern "C" fn remove_synapse(network: *mut Network, id: SynapseId) {
                 .retain(|e| *e != id);
         }
     }
+}
+
+#[no_mangle]
+pub extern "C" fn get_neuron_model(network: *const Network, id: NeuronId) -> NeuronModelKind {
+    unsafe { (*network).neurons.get(&id).unwrap().model.clone() }
+}
+
+#[no_mangle]
+pub extern "C" fn network_has_neuron(network: *mut Network, id: NeuronId) -> bool {
+    unsafe { (*network).neurons.contains_key(&id) }
+}
+
+#[no_mangle]
+pub extern "C" fn network_has_synapse(network: *mut Network, id: SynapseId) -> bool {
+    unsafe { (*network).synapses.contains_key(&id) }
 }
 
 #[no_mangle]

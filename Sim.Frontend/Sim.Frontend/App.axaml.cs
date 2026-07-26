@@ -4,6 +4,7 @@ using Avalonia.Data.Core;
 using Avalonia.Data.Core.Plugins;
 using System.Linq;
 using Avalonia.Markup.Xaml;
+using Sim.Frontend.Models;
 using Sim.Frontend.ViewModels;
 using Sim.Frontend.Views;
 
@@ -11,6 +12,8 @@ namespace Sim.Frontend;
 
 public partial class App : Application
 {
+    public AppSettings AppSettings { get; set; } = new();
+    
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);

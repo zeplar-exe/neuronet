@@ -12,4 +12,9 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
     }
+
+    private void OnClosing(object? sender, WindowClosingEventArgs e)
+    {
+        ViewModel.Workspace.Dispose();
+    }
 }

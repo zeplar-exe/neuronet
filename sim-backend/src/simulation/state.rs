@@ -1,23 +1,25 @@
 use std::collections::HashMap;
 
+use rustc_hash::FxHashMap;
+
 use crate::{
     models::NeuronModelKind,
-    simulation::{
-        id::NeuronId,
-        network::{self, Network, Time, Voltage},
-    },
+    simulation::network::{self, Current, Network, NeuronId, Time, Voltage},
 };
+
+pub const CONDUCTION_WHEEL_SIZE: usize = 5001;
 
 #[derive(Clone, Default)]
 pub struct Runstate {
     pub timestamp: i32,
-    pub neuron_refractory: HashMap<NeuronId, Time>,
-    pub synapse_propagation: HashMap<NeuronId, Vec<Time>>,
-    pub integrate_fire: HashMap<NeuronId, IntegrateFireState>,
+    pub neuron_refractory: FxHashMap<NeuronId, Time>,
+    // Bucket i holds conduction due at timestamps where t % CONDUCTION_WHEEL_SIZE == i
+    pub synapse_wheel: Vec<Vec<(NeuronId, Current)>>,
+    pub integrate_fire: FxHashMap<NeuronId, IntegrateFireState>,
     pub default_integrate_fire_state: IntegrateFireState,
-    pub lif: HashMap<NeuronId, LifState>,
+    pub lif: FxHashMap<NeuronId, LifState>,
     pub default_lif_state: LifState,
-    pub izhikevich: HashMap<NeuronId, IzhikevichState>,
+    pub izhikevich: FxHashMap<NeuronId, IzhikevichState>,
     pub default_izhikevich_state: IzhikevichState,
 }
 
@@ -33,6 +35,7 @@ pub struct IntegrateFireState {
 #[repr(C)]
 pub struct LifState {
     pub voltage: Voltage,
+    pub resting_potential: Voltage,
     pub reset_potential: Voltage,
     pub threshold: Voltage,
     pub leak_constant: f64,
@@ -63,10 +66,11 @@ impl Default for IntegrateFireState {
 impl Default for LifState {
     fn default() -> Self {
         Self {
-            voltage: -65 as Voltage,
-            reset_potential: -70 as Voltage,
-            threshold: -55 as Voltage,
-            leak_constant: 0.1,
+            voltage: 0.0,
+            resting_potential: 0.0,
+            reset_potential: 0.0,
+            threshold: 20.0,
+            leak_constant: 10.0,
         }
     }
 }
@@ -87,7 +91,17 @@ impl Default for IzhikevichState {
 
 #[no_mangle]
 pub extern "C" fn create_runstate() -> *mut Runstate {
-    Box::into_raw(Box::new(Runstate::default()))
+    let mut runstate = Runstate::default();
+    runstate.synapse_wheel = vec![Vec::new(); CONDUCTION_WHEEL_SIZE];
+    Box::into_raw(Box::new(runstate))
+}
+
+#[no_mangle]
+pub extern "C" fn clone_runstate(runstate: *mut Runstate) -> *mut Runstate {
+    unsafe {
+        let runstate = (*runstate).clone();
+        Box::into_raw(Box::new(runstate))
+    }
 }
 
 #[no_mangle]
@@ -97,16 +111,16 @@ pub extern "C" fn destroy_runstate(runstate: *mut Runstate) {
     }
 }
 
-pub fn get_integrate_fire_state(runstate: *mut Runstate, id: NeuronId) -> &mut IntegrateFireState {
-    unsafe { (*runstate).integrate_fire.get_mut(&id).unwrap() }
+pub fn get_integrate_fire_state(runstate: &mut Runstate, id: NeuronId) -> &mut IntegrateFireState {
+    runstate.integrate_fire.get_mut(&id).unwrap()
 }
 
-pub fn get_lif_state(runstate: *mut Runstate, id: NeuronId) -> &mut LifState {
-    unsafe { (*runstate).lif.get_mut(&id).unwrap() }
+pub fn get_lif_state(runstate: &mut Runstate, id: NeuronId) -> &mut LifState {
+    runstate.lif.get_mut(&id).unwrap()
 }
 
-pub fn get_izhikevich_state(runstate: *mut Runstate, id: NeuronId) -> &mut IzhikevichState {
-    unsafe { (*runstate).izhikevich.get_mut(&id).unwrap() }
+pub fn get_izhikevich_state(runstate: &mut Runstate, id: NeuronId) -> &mut IzhikevichState {
+    runstate.izhikevich.get_mut(&id).unwrap()
 }
 
 #[no_mangle]
@@ -158,17 +172,21 @@ pub extern "C" fn fill_defaults(network: *mut Network, runstate: *mut Runstate) 
             match neuron.model {
                 NeuronModelKind::IntegrateFire => {
                     if !(*runstate).integrate_fire.contains_key(neuron_id) {
-                        set_default_integrate_fire_state(runstate, (*runstate).default_integrate_fire_state.clone());
+                        set_integrate_fire_state(
+                            runstate,
+                            *neuron_id,
+                            (*runstate).default_integrate_fire_state.clone(),
+                        );
                     }
                 }
                 NeuronModelKind::LIF => {
                     if !(*runstate).lif.contains_key(neuron_id) {
-                        set_default_lif_state(runstate, (*runstate).default_lif_state.clone());
+                        set_lif_state(runstate, *neuron_id, (*runstate).default_lif_state.clone());
                     }
                 }
                 NeuronModelKind::Izhikevich => {
                     if !(*runstate).izhikevich.contains_key(neuron_id) {
-                        set_default_izhikevich_state(runstate, (*runstate).default_izhikevich_state.clone());
+                        set_izhikevich_state(runstate, *neuron_id, (*runstate).default_izhikevich_state.clone());
                     }
                 }
             }

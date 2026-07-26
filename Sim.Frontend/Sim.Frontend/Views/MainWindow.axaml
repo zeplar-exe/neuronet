@@ -9,7 +9,8 @@
         x:Class="Sim.Frontend.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="Sim.Frontend">
+        Title="Sim.Frontend"
+        Closing="OnClosing">
     <Design.DataContext>
         <vm:MainWindowViewModel/>
     </Design.DataContext>
@@ -88,14 +89,14 @@
                         <DataTemplate></DataTemplate>
                     </TabControl.ContentTemplate>
                 </TabControl>
-                <StackPanel>
-                    <ContentControl IsVisible="{Binding BuildViewOpen}" 
+                <Panel>
+                    <ContentControl IsVisible="{Binding BuildViewOpen}"
                                     Content="{Binding BuildView}"></ContentControl>
-                    <ContentControl IsVisible="{Binding ExecuteViewOpen}" 
+                    <ContentControl IsVisible="{Binding ExecuteViewOpen}"
                                     Content="{Binding ExecuteView}"></ContentControl>
-                    <ContentControl IsVisible="{Binding AnalyzeViewOpen}" 
+                    <ContentControl IsVisible="{Binding AnalyzeViewOpen}"
                                     Content="{Binding AnalyzeView}"></ContentControl>
-                </StackPanel>
+                </Panel>
             </DockPanel>
         </DockPanel>
     </DockPanel>

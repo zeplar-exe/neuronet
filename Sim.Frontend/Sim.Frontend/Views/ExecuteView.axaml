@@ -3,8 +3,13 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:views="clr-namespace:Sim.Frontend.Views"
+             xmlns:viewModels="clr-namespace:Sim.Frontend.ViewModels"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             x:DataType="viewModels:ExecuteViewViewModel"
              x:Class="Sim.Frontend.Views.ExecuteView">
+    <Design.DataContext>
+        <viewModels:ExecuteViewViewModel/>
+    </Design.DataContext>
     <views:WorkspaceView.PropertiesPanel>
         <Control></Control>
     </views:WorkspaceView.PropertiesPanel>
@@ -15,36 +20,26 @@
         <StackPanel Orientation="Horizontal">
             <StackPanel>
                 <TextBlock>Choose Runstate</TextBlock>
-                <ComboBox>
-                    <ComboBoxItem>&lt;New Runstate&gt;</ComboBoxItem>
+                <ComboBox SelectedIndex="{Binding SelectedRunstateIndex}"
+                          ItemsSource="{Binding RecentRunstates}">
                 </ComboBox>
+                <Button Command="{Binding NewRunstateCommand}">NEW RS</Button>
+                <Button>OPEN RS</Button>
             </StackPanel>
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <Button>CS</Button> // create stimulus (modal -> tool)
-                </StackPanel>
-                <StackPanel Orientation="Horizontal">
-                    <Button>PV</Button> // paint voltage
+                    <Button>CrSt</Button>
                 </StackPanel>
             </StackPanel>
-            <Button>PLAY</Button>
-            <Button>RESET</Button> // always store an on-disk runstate (autosave?) to reset to
+            <Button Command="{Binding SetRunningCommand}" CommandParameter="{x:True}" 
+                    IsVisible="{Binding IsRunning}">RUN</Button>
+            <Button Command="{Binding SetRunningCommand}" CommandParameter="{x:False}" 
+                    IsVisible="{Binding IsRunning}">STOP</Button>
+            <Button>RESET</Button>
             <StackPanel>
                 <Button>STEP</Button>
                 <NumericUpDown></NumericUpDown>
             </StackPanel>
-            <StackPanel>
-                <TextBlock>Default Voltage</TextBlock>
-                <NumericUpDown></NumericUpDown>
-            </StackPanel>
-            <StackPanel>
-                <TextBlock>Default Action Propagation</TextBlock>
-                <NumericUpDown></NumericUpDown>
-            </StackPanel> // in-neuron conduction velocity
-            <StackPanel>
-                <TextBlock>Default Synapse Propagation</TextBlock>
-                <NumericUpDown></NumericUpDown>
-            </StackPanel> // synaptic hop delay (usually 1ms)
         </StackPanel>
     </views:WorkspaceView.ToolbarPanel>
     Test2
