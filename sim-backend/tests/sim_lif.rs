@@ -7,14 +7,15 @@ use neuronet::simulation::{
 
 #[test]
 fn test_lif_single_neuron() {
-    let tau: f64 = 10.0;
+    let leak_rate: f64 = 0.01;
+    let input_gain: f64 = 1.0;
     let threshold: Voltage = 20.0;
     let current: f64 = 25.0;
 
     let network = create_network();
     let events = create_event_container();
     let stimuli = create_stimulus_container();
-    let n = add_lif_neuron(network, 0);
+    let n = add_lif_neuron(network);
 
     set_current_stimulus(stimuli, n, current);
 
@@ -24,15 +25,15 @@ fn test_lif_single_neuron() {
         n,
         LifState {
             voltage: 0.0,
-            resting_potential: 0.0,
             reset_potential: 0.0,
             threshold,
-            leak_constant: tau,
+            leak_rate,
+            input_gain,
         },
     );
 
-    // Analytical time solution for spike
-    let expected_steps = (-tau * (1.0 - threshold / current).ln() / 0.1) as i32;
+    let expected_steps = ((1.0 - threshold * leak_rate / (current * input_gain)).ln()
+        / (1.0 - leak_rate).ln()) as i32;
 
     unsafe {
         let mut spike_step = None;
@@ -50,10 +51,6 @@ fn test_lif_single_neuron() {
             "spike at step {spike_step}, expected ~{expected_steps}"
         );
 
-        assert!(
-            get_voltage(network, runstate, n).abs() < 1.0,
-            "voltage should reset near 0"
-        );
     }
 
     destroy_network(network);

@@ -1,8 +1,18 @@
 use neuronet::simulation::{
     events::{create_event_container, destroy_event_container},
     execution::{create_stimulus_container, destroy_stimulus_container, set_current_stimulus, step},
-    network::{add_izhikevich_neuron, add_synapse, create_network, destroy_network, Time, Voltage},
-    state::{create_runstate, destroy_runstate, fill_defaults, set_default_izhikevich_state, IzhikevichState},
+    network::{add_izhikevich_neuron, add_synapse, create_network, destroy_network, Voltage},
+    state::{create_runstate, destroy_runstate, set_izhikevich_state, set_neuron_refractory_period, set_synapse_strength, set_synapse_conduction_time, IzhikevichState},
+};
+
+const DEFAULT_IZH: IzhikevichState = IzhikevichState {
+    voltage: -65.0,
+    reset_potential: -65.0,
+    threshold: 30.0,
+    a_var: 0.02,
+    b_var: 0.2,
+    recovery_var: -13.0,
+    d_var: 8.0,
 };
 
 #[test]
@@ -13,23 +23,11 @@ fn test_izhikevich_single() {
     let events = create_event_container();
     let stimuli = create_stimulus_container();
 
-    let n = add_izhikevich_neuron(network, 0);
+    let n = add_izhikevich_neuron(network);
     set_current_stimulus(stimuli, n, STIMULUS);
 
     let runstate = create_runstate();
-    set_default_izhikevich_state(
-        runstate,
-        IzhikevichState {
-            voltage: -65 as Voltage,
-            reset_potential: -65 as Voltage,
-            threshold: 30 as Voltage,
-            a_var: 0.02,
-            b_var: 0.2,
-            recovery_var: -13.0,
-            d_var: 8.0,
-        },
-    );
-    fill_defaults(network, runstate);
+    set_izhikevich_state(runstate, n, DEFAULT_IZH);
 
     unsafe {
         for _ in 0..(10 * 1000) {
@@ -54,7 +52,7 @@ fn test_poisson_100() {
     const CURRENT_STIMULUS: Voltage = 35.0;
     const EXCITATORY_STIMULUS: Voltage = 35.0;
     const INHIBITORY_STIMULUS: Voltage = -15.0;
-    const REFRACTORY: Time = 30; // 3ms
+    const REFRACTORY: u32 = 30;
     const CONNECTIVITY: f32 = 0.3;
     const EXCITATORY_RATE: f32 = 0.8;
 
@@ -67,11 +65,11 @@ fn test_poisson_100() {
     let mut neurons = Vec::new();
 
     for _ in 0..100 {
-        let n = add_izhikevich_neuron(network, REFRACTORY);
-
+        let n = add_izhikevich_neuron(network);
         neurons.push(n);
     }
 
+    let mut synapses = Vec::new();
     for i in 0..100 {
         for j in 0..100 {
             if i == j {
@@ -79,12 +77,13 @@ fn test_poisson_100() {
             }
             if rand::random::<f32>() < CONNECTIVITY {
                 let duration = rand::random_range(3..10);
-
-                if rand::random::<f32>() < EXCITATORY_RATE {
-                    add_synapse(network, i, j, EXCITATORY_STIMULUS, duration);
+                let strength = if rand::random::<f32>() < EXCITATORY_RATE {
+                    EXCITATORY_STIMULUS
                 } else {
-                    add_synapse(network, i, j, INHIBITORY_STIMULUS, duration);
-                }
+                    INHIBITORY_STIMULUS
+                };
+                let s = add_synapse(network, i, j);
+                synapses.push((s, strength, duration));
             }
         }
     }
@@ -94,22 +93,16 @@ fn test_poisson_100() {
     }
 
     let runstate = create_runstate();
-    set_default_izhikevich_state(
-        runstate,
-        IzhikevichState {
-            voltage: -65 as Voltage,
-            reset_potential: -65 as Voltage,
-            threshold: 30 as Voltage,
-            a_var: 0.02,
-            b_var: 0.2,
-            recovery_var: -13.0,
-            d_var: 8.0,
-        },
-    );
-    fill_defaults(network, runstate);
+    for &n in &neurons {
+        set_izhikevich_state(runstate, n, DEFAULT_IZH);
+        set_neuron_refractory_period(runstate, n, REFRACTORY);
+    }
+    for (s, strength, duration) in synapses {
+        set_synapse_strength(runstate, s, strength);
+        set_synapse_conduction_time(runstate, s, duration);
+    }
 
     unsafe {
-        // 1000ms
         for _ in 0..(10 * 1000) {
             step(network, runstate, stimuli, events);
         }

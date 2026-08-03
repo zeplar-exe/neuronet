@@ -1,4 +1,10 @@
 fn main() {
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+
+    cbindgen::generate(&manifest_dir)
+        .expect("cbindgen failed")
+        .write_to_file("neuronet.h");
+
     csbindgen::Builder::default()
         .input_extern_file("src/lib.rs")
         .input_extern_file("src/models/mod.rs")

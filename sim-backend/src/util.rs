@@ -26,7 +26,7 @@ pub fn variant_eq<T>(a: &T, b: &T) -> bool {
 pub extern "C" fn destroy_byte_buffer(buffer: ByteBuffer) {
     unsafe {
         if !buffer.data.is_null() {
-            drop(Box::from_raw(buffer.data as *mut u8));
+            drop(Vec::from_raw_parts(buffer.data, buffer.len, buffer.len));
         }
     }
 }

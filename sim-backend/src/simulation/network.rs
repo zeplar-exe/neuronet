@@ -1,6 +1,7 @@
 use std::ffi::c_uchar;
 
 use rustc_hash::FxHashMap;
+use serde::{Serialize, Deserialize};
 
 use crate::models::NeuronModelKind;
 use crate::util::{ByteBuffer, NeuronBuffer, SynapseBuffer};
@@ -12,23 +13,20 @@ pub type Voltage = f64;
 pub type Current = f64;
 pub type Time = u32;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct Neuron {
     pub id: NeuronId,
     pub model: NeuronModelKind,
-    pub refractory_period: Time,
     pub outgoing: Vec<SynapseId>,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct Synapse {
-    pub strength: Current,
     pub source: NeuronId,
     pub target: NeuronId,
-    pub conduction_time: Time,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct Network {
     pub neurons: FxHashMap<NeuronId, Neuron>,
     pub synapses: FxHashMap<SynapseId, Synapse>,
@@ -61,16 +59,29 @@ pub extern "C" fn destroy_network(network: *mut Network) {
 }
 
 #[no_mangle]
-pub extern "C" fn serialize_network(network: *const Network) -> ByteBuffer {
-    return ByteBuffer {
-        data: std::ptr::null_mut(),
-        len: 0,
-    };
+pub extern "C" fn serialize_network(network: *const Network, json: bool) -> ByteBuffer {
+    unsafe {
+        let bytes = if json {
+            serde_json::to_vec(&*network).unwrap()
+        } else {
+            bincode::serialize(&*network).unwrap()
+        };
+        let mut bytes = std::mem::ManuallyDrop::new(bytes);
+        ByteBuffer { data: bytes.as_mut_ptr(), len: bytes.len() }
+    }
 }
 
 #[no_mangle]
-pub extern "C" fn deserialize_network(data: *const c_uchar, length: usize) -> *mut Network {
-    return Box::into_raw(Box::new(Network::default()));
+pub extern "C" fn deserialize_network(data: *const c_uchar, length: usize, json: bool) -> *mut Network {
+    unsafe {
+        let slice = std::slice::from_raw_parts(data, length);
+        let network: Network = if json {
+            serde_json::from_slice(slice).unwrap()
+        } else {
+            bincode::deserialize(slice).unwrap()
+        };
+        Box::into_raw(Box::new(network))
+    }
 }
 
 #[no_mangle]
@@ -98,31 +109,17 @@ pub extern "C" fn get_synapses(network: *const Network) -> SynapseBuffer {
 }
 
 #[no_mangle]
-pub extern "C" fn add_synapse(
-    network: *mut Network,
-    source: NeuronId,
-    target: NeuronId,
-    strength: Current,
-    conduction_time: Time,
-) -> SynapseId {
+pub extern "C" fn add_synapse(network: *mut Network, source: NeuronId, target: NeuronId) -> SynapseId {
     unsafe {
         let idx = (*network).next_synapse_id();
-        (*network).synapses.insert(
-            idx,
-            Synapse {
-                strength,
-                source,
-                target,
-                conduction_time,
-            },
-        );
+        (*network).synapses.insert(idx, Synapse { source, target });
         (*network).neurons.get_mut(&source).unwrap().outgoing.push(idx);
         idx
     }
 }
 
 #[no_mangle]
-pub extern "C" fn add_integrate_fire_neuron(network: *mut Network, refractory_period: Time) -> NeuronId {
+pub extern "C" fn add_integrate_fire_neuron(network: *mut Network) -> NeuronId {
     unsafe {
         let idx = (*network).next_neuron_id();
         (*network).neurons.insert(
@@ -130,7 +127,6 @@ pub extern "C" fn add_integrate_fire_neuron(network: *mut Network, refractory_pe
             Neuron {
                 id: idx,
                 model: NeuronModelKind::IntegrateFire,
-                refractory_period,
                 outgoing: Vec::new(),
             },
         );
@@ -139,7 +135,7 @@ pub extern "C" fn add_integrate_fire_neuron(network: *mut Network, refractory_pe
 }
 
 #[no_mangle]
-pub extern "C" fn add_lif_neuron(network: *mut Network, refractory_period: Time) -> NeuronId {
+pub extern "C" fn add_lif_neuron(network: *mut Network) -> NeuronId {
     unsafe {
         let idx = (*network).next_neuron_id();
         (*network).neurons.insert(
@@ -147,7 +143,6 @@ pub extern "C" fn add_lif_neuron(network: *mut Network, refractory_period: Time)
             Neuron {
                 id: idx,
                 model: NeuronModelKind::LIF,
-                refractory_period,
                 outgoing: Vec::new(),
             },
         );
@@ -156,7 +151,7 @@ pub extern "C" fn add_lif_neuron(network: *mut Network, refractory_period: Time)
 }
 
 #[no_mangle]
-pub extern "C" fn add_izhikevich_neuron(network: *mut Network, refractory_period: Time) -> NeuronId {
+pub extern "C" fn add_izhikevich_neuron(network: *mut Network) -> NeuronId {
     unsafe {
         let idx = (*network).next_neuron_id();
         (*network).neurons.insert(
@@ -164,7 +159,6 @@ pub extern "C" fn add_izhikevich_neuron(network: *mut Network, refractory_period
             Neuron {
                 id: idx,
                 model: NeuronModelKind::Izhikevich,
-                refractory_period,
                 outgoing: Vec::new(),
             },
         );
@@ -208,25 +202,4 @@ pub extern "C" fn network_has_neuron(network: *mut Network, id: NeuronId) -> boo
 #[no_mangle]
 pub extern "C" fn network_has_synapse(network: *mut Network, id: SynapseId) -> bool {
     unsafe { (*network).synapses.contains_key(&id) }
-}
-
-#[no_mangle]
-pub extern "C" fn set_neuron_refractory_period(network: *mut Network, id: NeuronId, refractory_period: Time) {
-    unsafe {
-        (*network).neurons.get_mut(&id).unwrap().refractory_period = refractory_period;
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn set_synapse_strength(network: *mut Network, id: SynapseId, strength: Voltage) {
-    unsafe {
-        (*network).synapses.get_mut(&id).unwrap().strength = strength;
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn set_synapse_conduction_time(network: *mut Network, id: SynapseId, conduction_time: Time) {
-    unsafe {
-        (*network).synapses.get_mut(&id).unwrap().conduction_time = conduction_time;
-    }
 }

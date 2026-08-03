@@ -69,23 +69,6 @@ pub extern "C" fn set_voltage(network: *const Network, runstate: *mut Runstate, 
 }
 
 #[no_mangle]
-pub extern "C" fn runstate_remove_neuron(network: *const Network, runstate: *mut Runstate, id: NeuronId) {
-    unsafe {
-        let model = (*network).neurons.get(&id).unwrap().model.clone();
-
-        if variant_eq(&model, &NeuronModelKind::IntegrateFire) {
-            (*runstate).integrate_fire.remove(&id);
-        } else if variant_eq(&model, &NeuronModelKind::LIF) {
-            (*runstate).lif.remove(&id);
-        } else if variant_eq(&model, &NeuronModelKind::Izhikevich) {
-            (*runstate).izhikevich.remove(&id);
-        }
-
-        (*runstate).neuron_refractory.remove(&id);
-    }
-}
-
-#[no_mangle]
 pub extern "C" fn set_current_stimulus(stimuli: *mut StimulusContainer, neuron_id: NeuronId, current: Current) {
     unsafe {
         (*stimuli).current_stimuli.insert(neuron_id, current);
@@ -160,13 +143,18 @@ pub extern "C" fn step(
             }
 
             if fired {
+                if (*runstate).neuron_refractory_period.contains_key(neuron_id) {
+                    (*runstate).neuron_refractory.insert(*neuron_id, 0);
+                }
                 let t = (*runstate).timestamp as usize;
                 let wheel = &mut (*runstate).synapse_wheel;
                 for synapse_id in (*neuron).outgoing.iter() {
                     let synapse = (*network).synapses.get(synapse_id).unwrap();
-                    let delay = (synapse.conduction_time as usize).saturating_sub(1);
+                    let conduction_time = (*runstate).synapse_conduction_time.get(synapse_id).unwrap();
+                    let strength = (*runstate).synapse_strength.get(synapse_id).unwrap();
+                    let delay = (*conduction_time as usize).saturating_sub(1);
                     debug_assert!(delay < CONDUCTION_WHEEL_SIZE, "conduction delay exceeds wheel");
-                    wheel[(t + delay) % CONDUCTION_WHEEL_SIZE].push((synapse.target, synapse.strength));
+                    wheel[(t + delay) % CONDUCTION_WHEEL_SIZE].push((synapse.target, *strength));
                 }
             }
         }
@@ -198,8 +186,7 @@ pub extern "C" fn step(
                 NeuronModelKind::LIF => {
                     //https://www.cns.nyu.edu/~eorhan/notes/lif-neuron.pdf
                     let state = get_lif_state(&mut *runstate, *neuron_id);
-                    let dv = -(state.voltage - i) / state.leak_constant;
-                    state.voltage += dv * 0.1;
+                    state.voltage = state.voltage * (1.0 - state.leak_rate) + i * state.input_gain;
                 }
                 NeuronModelKind::Izhikevich => {
                     // https://www.izhikevich.org/publications/spikes.pdf
@@ -216,8 +203,8 @@ pub extern "C" fn step(
         let mut refractory_remove_indices: Vec<NeuronId> = vec![];
 
         for (neuron_id, refractory) in (*runstate).neuron_refractory.iter_mut() {
-            let neuron = (*network).neurons.get(neuron_id).unwrap();
-            if *refractory < neuron.refractory_period {
+            let refractory_period = (*runstate).neuron_refractory_period.get(neuron_id).unwrap();
+            if *refractory < *refractory_period {
                 *refractory += 1;
             } else {
                 refractory_remove_indices.push(*neuron_id);

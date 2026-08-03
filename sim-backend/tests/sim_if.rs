@@ -1,14 +1,14 @@
 use neuronet::simulation::{
     events::{create_event_container, destroy_event_container},
     execution::{create_stimulus_container, destroy_stimulus_container, get_voltage, set_current_stimulus, step},
-    network::{add_integrate_fire_neuron, add_synapse, create_network, destroy_network, Current, Time, Voltage},
-    state::{create_runstate, destroy_runstate, fill_defaults, set_integrate_fire_state, IntegrateFireState},
+    network::{add_integrate_fire_neuron, add_synapse, create_network, destroy_network, Voltage},
+    state::{create_runstate, destroy_runstate, set_integrate_fire_state, set_synapse_strength, set_synapse_conduction_time, IntegrateFireState},
 };
 
 #[test]
 fn test_add_integrate_fire_neuron() {
     let network = create_network();
-    let _if1 = add_integrate_fire_neuron(network, 0);
+    let _if1 = add_integrate_fire_neuron(network);
 
     unsafe {
         assert_eq!((*network).neurons.len(), 1);
@@ -18,7 +18,7 @@ fn test_add_integrate_fire_neuron() {
 #[test]
 fn test_add_current_stimulus() {
     let network = create_network();
-    let if1 = add_integrate_fire_neuron(network, 0);
+    let if1 = add_integrate_fire_neuron(network);
     let stimuli = create_stimulus_container();
     set_current_stimulus(stimuli, if1, 35.0);
 
@@ -38,15 +38,17 @@ fn test_spike() {
 
     let network = create_network();
     let events = create_event_container();
-    let if1 = add_integrate_fire_neuron(network, 0);
-    let if2 = add_integrate_fire_neuron(network, 0);
-    let _s1 = add_synapse(network, if1, if2, SYNAPSE_STIMULUS, 0);
+    let if1 = add_integrate_fire_neuron(network);
+    let if2 = add_integrate_fire_neuron(network);
+    let s1 = add_synapse(network, if1, if2);
 
     let empty_stimuli = create_stimulus_container();
     let stimuli = create_stimulus_container();
     set_current_stimulus(stimuli, if1, CURRENT_STIMULUS);
 
     let runstate = create_runstate();
+    set_synapse_strength(runstate, s1, SYNAPSE_STIMULUS);
+    set_synapse_conduction_time(runstate, s1, 0);
     set_integrate_fire_state(
         runstate,
         if1,
@@ -108,15 +110,17 @@ fn test_3_step_spike() {
 
     let network = create_network();
     let events = create_event_container();
-    let if1 = add_integrate_fire_neuron(network, 0);
-    let if2 = add_integrate_fire_neuron(network, 0);
-    let _s1 = add_synapse(network, if1, if2, SYNAPSE_STIMULUS, 3);
+    let if1 = add_integrate_fire_neuron(network);
+    let if2 = add_integrate_fire_neuron(network);
+    let s1 = add_synapse(network, if1, if2);
 
     let empty_stimuli = create_stimulus_container();
     let stimuli = create_stimulus_container();
     set_current_stimulus(stimuli, if1, CURRENT_STIMULUS);
 
     let runstate = create_runstate();
+    set_synapse_strength(runstate, s1, SYNAPSE_STIMULUS);
+    set_synapse_conduction_time(runstate, s1, 3);
     set_integrate_fire_state(
         runstate,
         if1,
@@ -169,15 +173,21 @@ fn test_four_neuron_cycle() {
     let empty_stimuli = create_stimulus_container();
     let stimuli = create_stimulus_container();
 
-    let neurons: Vec<_> = (0..4).map(|_| add_integrate_fire_neuron(network, 0)).collect();
-    add_synapse(network, neurons[0], neurons[1], SYNAPSE_STIMULUS, 1);
-    add_synapse(network, neurons[1], neurons[2], SYNAPSE_STIMULUS, 1);
-    add_synapse(network, neurons[2], neurons[3], SYNAPSE_STIMULUS, 1);
-    add_synapse(network, neurons[3], neurons[0], SYNAPSE_STIMULUS, 1);
+    let neurons: Vec<_> = (0..4).map(|_| add_integrate_fire_neuron(network)).collect();
+
+    let runstate = create_runstate();
+
+    let s0 = add_synapse(network, neurons[0], neurons[1]);
+    let s1 = add_synapse(network, neurons[1], neurons[2]);
+    let s2 = add_synapse(network, neurons[2], neurons[3]);
+    let s3 = add_synapse(network, neurons[3], neurons[0]);
+    for s in [s0, s1, s2, s3] {
+        set_synapse_strength(runstate, s, SYNAPSE_STIMULUS);
+        set_synapse_conduction_time(runstate, s, 1);
+    }
 
     set_current_stimulus(stimuli, neurons[0], CURRENT_STIMULUS);
 
-    let runstate = create_runstate();
     for &n in &neurons {
         set_integrate_fire_state(
             runstate,
