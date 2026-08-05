@@ -48,35 +48,39 @@ impl Network {
 
 #[no_mangle]
 pub extern "C" fn create_network() -> *mut Network {
-    return Box::into_raw(Box::new(Network::default()));
+    ffi_catch_ptr!(Box::into_raw(Box::new(Network::default())))
 }
 
 #[no_mangle]
 pub extern "C" fn destroy_network(network: *mut Network) {
-    unsafe {
-        drop(Box::from_raw(network));
-    }
+    ffi_catch_void!(unsafe { drop(Box::from_raw(network)) })
 }
 
 #[no_mangle]
 pub extern "C" fn serialize_network(network: *const Network, json: bool) -> ByteBuffer {
-    unsafe {
-        let bytes = if json {
-            serde_json::to_vec(&*network).unwrap()
-        } else {
-            bincode::serialize(&*network).unwrap()
-        };
-        let mut bytes = std::mem::ManuallyDrop::new(bytes);
+    ffi_catch_struct!(
         ByteBuffer {
-            data: bytes.as_mut_ptr(),
-            len: bytes.len(),
+            data: std::ptr::null_mut(),
+            len: 0
+        },
+        unsafe {
+            let bytes = if json {
+                serde_json::to_vec(&*network).unwrap()
+            } else {
+                bincode::serialize(&*network).unwrap()
+            };
+            let mut bytes = std::mem::ManuallyDrop::new(bytes);
+            ByteBuffer {
+                data: bytes.as_mut_ptr(),
+                len: bytes.len(),
+            }
         }
-    }
+    )
 }
 
 #[no_mangle]
 pub extern "C" fn deserialize_network(data: *const c_uchar, length: usize, json: bool) -> *mut Network {
-    unsafe {
+    ffi_catch_ptr!(unsafe {
         let slice = std::slice::from_raw_parts(data, length);
         let network: Network = if json {
             serde_json::from_slice(slice).unwrap()
@@ -84,46 +88,58 @@ pub extern "C" fn deserialize_network(data: *const c_uchar, length: usize, json:
             bincode::deserialize(slice).unwrap()
         };
         Box::into_raw(Box::new(network))
-    }
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn get_neurons(network: *const Network) -> NeuronBuffer {
-    unsafe {
-        let neurons = (*network).neurons.keys().copied().collect::<Vec<_>>();
-        let leaked = std::mem::ManuallyDrop::new(neurons);
-        return NeuronBuffer {
-            data: leaked.as_ptr(),
-            len: (*network).neurons.len(),
-        };
-    }
+    ffi_catch_struct!(
+        NeuronBuffer {
+            data: std::ptr::null(),
+            len: 0
+        },
+        unsafe {
+            let neurons = (*network).neurons.keys().copied().collect::<Vec<_>>();
+            let leaked = std::mem::ManuallyDrop::new(neurons);
+            NeuronBuffer {
+                data: leaked.as_ptr(),
+                len: (*network).neurons.len(),
+            }
+        }
+    )
 }
 
 #[no_mangle]
 pub extern "C" fn get_synapses(network: *const Network) -> SynapseBuffer {
-    unsafe {
-        let synapses = (*network).synapses.keys().copied().collect::<Vec<_>>();
-        let leaked = std::mem::ManuallyDrop::new(synapses);
-        return SynapseBuffer {
-            data: leaked.as_ptr(),
-            len: (*network).synapses.len(),
-        };
-    }
+    ffi_catch_struct!(
+        SynapseBuffer {
+            data: std::ptr::null(),
+            len: 0
+        },
+        unsafe {
+            let synapses = (*network).synapses.keys().copied().collect::<Vec<_>>();
+            let leaked = std::mem::ManuallyDrop::new(synapses);
+            SynapseBuffer {
+                data: leaked.as_ptr(),
+                len: (*network).synapses.len(),
+            }
+        }
+    )
 }
 
 #[no_mangle]
 pub extern "C" fn add_synapse(network: *mut Network, source: NeuronId, target: NeuronId) -> SynapseId {
-    unsafe {
+    ffi_catch_num!(unsafe {
         let idx = (*network).next_synapse_id();
         (*network).synapses.insert(idx, Synapse { source, target });
         (*network).neurons.get_mut(&source).unwrap().outgoing.push(idx);
         idx
-    }
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn add_integrate_fire_neuron(network: *mut Network) -> NeuronId {
-    unsafe {
+    ffi_catch_num!(unsafe {
         let idx = (*network).next_neuron_id();
         (*network).neurons.insert(
             idx,
@@ -134,12 +150,12 @@ pub extern "C" fn add_integrate_fire_neuron(network: *mut Network) -> NeuronId {
             },
         );
         idx
-    }
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn add_lif_neuron(network: *mut Network) -> NeuronId {
-    unsafe {
+    ffi_catch_num!(unsafe {
         let idx = (*network).next_neuron_id();
         (*network).neurons.insert(
             idx,
@@ -150,12 +166,12 @@ pub extern "C" fn add_lif_neuron(network: *mut Network) -> NeuronId {
             },
         );
         idx
-    }
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn add_izhikevich_neuron(network: *mut Network) -> NeuronId {
-    unsafe {
+    ffi_catch_num!(unsafe {
         let idx = (*network).next_neuron_id();
         (*network).neurons.insert(
             idx,
@@ -166,40 +182,42 @@ pub extern "C" fn add_izhikevich_neuron(network: *mut Network) -> NeuronId {
             },
         );
         idx
-    }
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn network_remove_neuron(network: *mut Network, id: NeuronId) {
-    unsafe {
+    ffi_catch_void!(unsafe {
         if let Some(_) = (*network).neurons.remove(&id) {
             (*network).synapses.retain(|_, e| e.source != id && e.target != id);
         }
-    }
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn network_remove_synapse(network: *mut Network, id: SynapseId) {
-    unsafe {
+    ffi_catch_void!(unsafe {
         if let Some(synapse) = (*network).synapses.remove(&id) {
             if let Some(source) = (*network).neurons.get_mut(&synapse.source) {
                 source.outgoing.retain(|e| *e != id);
             }
         }
-    }
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn get_neuron_model(network: *const Network, id: NeuronId) -> NeuronModelKind {
-    unsafe { (*network).neurons.get(&id).unwrap().model.clone() }
+    ffi_catch_struct!(NeuronModelKind::IntegrateFire, unsafe {
+        (*network).neurons.get(&id).unwrap().model.clone()
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn network_has_neuron(network: *mut Network, id: NeuronId) -> bool {
-    unsafe { (*network).neurons.contains_key(&id) }
+    ffi_catch_num!(unsafe { (*network).neurons.contains_key(&id) })
 }
 
 #[no_mangle]
 pub extern "C" fn network_has_synapse(network: *mut Network, id: SynapseId) -> bool {
-    unsafe { (*network).synapses.contains_key(&id) }
+    ffi_catch_num!(unsafe { (*network).synapses.contains_key(&id) })
 }

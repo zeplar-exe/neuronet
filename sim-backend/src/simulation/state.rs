@@ -1,7 +1,7 @@
 use std::ffi::c_uchar;
 
 use rustc_hash::FxHashMap;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::simulation::network::{Current, NeuronId, SynapseId, Time, Voltage};
 use crate::util::ByteBuffer;
@@ -90,20 +90,29 @@ impl Default for IzhikevichState {
 
 #[no_mangle]
 pub extern "C" fn serialize_runstate(runstate: *const Runstate, json: bool) -> ByteBuffer {
-    unsafe {
-        let bytes = if json {
-            serde_json::to_vec(&*runstate).unwrap()
-        } else {
-            bincode::serialize(&*runstate).unwrap()
-        };
-        let mut bytes = std::mem::ManuallyDrop::new(bytes);
-        ByteBuffer { data: bytes.as_mut_ptr(), len: bytes.len() }
-    }
+    ffi_catch_struct!(
+        ByteBuffer {
+            data: std::ptr::null_mut(),
+            len: 0
+        },
+        unsafe {
+            let bytes = if json {
+                serde_json::to_vec(&*runstate).unwrap()
+            } else {
+                bincode::serialize(&*runstate).unwrap()
+            };
+            let mut bytes = std::mem::ManuallyDrop::new(bytes);
+            ByteBuffer {
+                data: bytes.as_mut_ptr(),
+                len: bytes.len(),
+            }
+        }
+    )
 }
 
 #[no_mangle]
 pub extern "C" fn deserialize_runstate(data: *const c_uchar, length: usize, json: bool) -> *mut Runstate {
-    unsafe {
+    ffi_catch_ptr!(unsafe {
         let slice = std::slice::from_raw_parts(data, length);
         let runstate: Runstate = if json {
             serde_json::from_slice(slice).unwrap()
@@ -111,70 +120,64 @@ pub extern "C" fn deserialize_runstate(data: *const c_uchar, length: usize, json
             bincode::deserialize(slice).unwrap()
         };
         Box::into_raw(Box::new(runstate))
-    }
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn create_runstate() -> *mut Runstate {
-    let mut runstate = Runstate::default();
-    runstate.synapse_wheel = vec![Vec::new(); CONDUCTION_WHEEL_SIZE];
-    Box::into_raw(Box::new(runstate))
+    ffi_catch_ptr!({
+        let mut runstate = Runstate::default();
+        runstate.synapse_wheel = vec![Vec::new(); CONDUCTION_WHEEL_SIZE];
+        Box::into_raw(Box::new(runstate))
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn clone_runstate(runstate: *mut Runstate) -> *mut Runstate {
-    unsafe {
+    ffi_catch_ptr!(unsafe {
         let runstate = (*runstate).clone();
         Box::into_raw(Box::new(runstate))
-    }
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn destroy_runstate(runstate: *mut Runstate) {
-    unsafe {
-        drop(Box::from_raw(runstate));
-    }
+    ffi_catch_void!(unsafe { drop(Box::from_raw(runstate)) })
 }
 
 #[no_mangle]
 pub extern "C" fn set_neuron_refractory_period(runstate: *mut Runstate, id: NeuronId, refractory_period: Time) {
-    unsafe {
-        (*runstate).neuron_refractory_period.insert(id, refractory_period);
-    }
+    ffi_catch_void!(unsafe { (*runstate).neuron_refractory_period.insert(id, refractory_period) })
 }
 
 #[no_mangle]
 pub extern "C" fn set_synapse_strength(runstate: *mut Runstate, id: SynapseId, strength: Voltage) {
-    unsafe {
-        (*runstate).synapse_strength.insert(id, strength);
-    }
+    ffi_catch_void!(unsafe { (*runstate).synapse_strength.insert(id, strength) })
 }
 
 #[no_mangle]
 pub extern "C" fn set_synapse_conduction_time(runstate: *mut Runstate, id: SynapseId, conduction_time: Time) {
-    unsafe {
-        (*runstate).synapse_conduction_time.insert(id, conduction_time);
-    }
+    ffi_catch_void!(unsafe { (*runstate).synapse_conduction_time.insert(id, conduction_time) })
 }
 
 #[no_mangle]
 pub extern "C" fn runstate_remove_neuron(runstate: *mut Runstate, id: NeuronId) {
-    unsafe {
+    ffi_catch_void!(unsafe {
         (*runstate).integrate_fire.remove(&id);
         (*runstate).lif.remove(&id);
         (*runstate).izhikevich.remove(&id);
         (*runstate).neuron_refractory_period.remove(&id);
         (*runstate).neuron_refractory.remove(&id);
-    }
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn clear_synapse_wheel(runstate: *mut Runstate) {
-    unsafe {
+    ffi_catch_void!(unsafe {
         for bucket in (*runstate).synapse_wheel.iter_mut() {
             bucket.clear();
         }
-    }
+    })
 }
 
 #[no_mangle]
@@ -194,21 +197,15 @@ pub extern "C" fn get_izhikevich_state(runstate: &mut Runstate, id: NeuronId) ->
 
 #[no_mangle]
 pub extern "C" fn set_integrate_fire_state(runstate: *mut Runstate, neuron_id: NeuronId, state: IntegrateFireState) {
-    unsafe {
-        (*runstate).integrate_fire.insert(neuron_id, state.clone());
-    }
+    ffi_catch_void!(unsafe { (*runstate).integrate_fire.insert(neuron_id, state.clone()) })
 }
 
 #[no_mangle]
 pub extern "C" fn set_lif_state(runstate: *mut Runstate, neuron_id: NeuronId, state: LifState) {
-    unsafe {
-        (*runstate).lif.insert(neuron_id, state);
-    }
+    ffi_catch_void!(unsafe { (*runstate).lif.insert(neuron_id, state) })
 }
 
 #[no_mangle]
 pub extern "C" fn set_izhikevich_state(runstate: *mut Runstate, neuron_id: NeuronId, state: IzhikevichState) {
-    unsafe {
-        (*runstate).izhikevich.insert(neuron_id, state);
-    }
+    ffi_catch_void!(unsafe { (*runstate).izhikevich.insert(neuron_id, state) })
 }

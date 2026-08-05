@@ -22,11 +22,11 @@ macro_rules! ffi_catch_ptr {
 }
 
 macro_rules! ffi_catch_num {
-    ($body:expr) => { ffi_catch!(0, $body) };
+    ($body:expr) => { ffi_catch!(Default::default(), $body) };
 }
 
 macro_rules! ffi_catch_void {
-    ($body:expr) => { ffi_catch!((), $body) };
+    ($body:expr) => { ffi_catch!((), { $body; }) };
 }
 
 macro_rules! ffi_catch_struct {

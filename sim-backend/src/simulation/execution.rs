@@ -19,60 +19,53 @@ pub struct StimulusContainer {
 
 #[no_mangle]
 pub extern "C" fn create_stimulus_container() -> *mut StimulusContainer {
-    return Box::into_raw(Box::new(StimulusContainer::default()));
+    ffi_catch_ptr!(Box::into_raw(Box::new(StimulusContainer::default())))
 }
 
 #[no_mangle]
 pub extern "C" fn destroy_stimulus_container(container: *mut StimulusContainer) {
-    unsafe {
-        drop(Box::from_raw(container));
-    }
+    ffi_catch_void!(unsafe { drop(Box::from_raw(container)) })
 }
 
 #[no_mangle]
 pub extern "C" fn get_voltage(network: *const Network, runstate: *mut Runstate, id: NeuronId) -> Voltage {
-    unsafe {
+    ffi_catch_num!(unsafe {
         let neuron = (*network).neurons.get(&id).unwrap();
-
         match &neuron.model {
             NeuronModelKind::IntegrateFire => get_integrate_fire_state(&mut *runstate, id).voltage,
             NeuronModelKind::LIF => get_lif_state(&mut *runstate, id).voltage,
             NeuronModelKind::Izhikevich => get_izhikevich_state(&mut *runstate, id).voltage,
         }
-    }
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn get_threshold(network: *const Network, runstate: *mut Runstate, id: NeuronId) -> Voltage {
-    unsafe {
+    ffi_catch_num!(unsafe {
         let neuron = (*network).neurons.get(&id).unwrap();
-
         match &neuron.model {
             NeuronModelKind::IntegrateFire => get_integrate_fire_state(&mut *runstate, id).threshold,
             NeuronModelKind::LIF => get_lif_state(&mut *runstate, id).threshold,
             NeuronModelKind::Izhikevich => get_izhikevich_state(&mut *runstate, id).threshold,
         }
-    }
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn set_voltage(network: *const Network, runstate: *mut Runstate, id: NeuronId, voltage: Voltage) {
-    unsafe {
+    ffi_catch_void!(unsafe {
         let neuron = (*network).neurons.get(&id).unwrap();
-        let if_state = (*runstate).integrate_fire.get_mut(&id).unwrap();
         match &neuron.model {
-            NeuronModelKind::IntegrateFire => if_state.voltage = voltage,
+            NeuronModelKind::IntegrateFire => get_integrate_fire_state(&mut *runstate, id).voltage = voltage,
             NeuronModelKind::LIF => get_lif_state(&mut *runstate, id).voltage = voltage,
             NeuronModelKind::Izhikevich => get_izhikevich_state(&mut *runstate, id).voltage = voltage,
         }
-    }
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn set_current_stimulus(stimuli: *mut StimulusContainer, neuron_id: NeuronId, current: Current) {
-    unsafe {
-        (*stimuli).current_stimuli.insert(neuron_id, current);
-    }
+    ffi_catch_void!(unsafe { (*stimuli).current_stimuli.insert(neuron_id, current) })
 }
 
 #[no_mangle]
@@ -82,9 +75,7 @@ pub extern "C" fn step(
     stimuli: *const StimulusContainer,
     events: *mut EventContainer,
 ) -> *mut Runstate {
-    // step in 1e-4 s
-
-    unsafe {
+    ffi_catch_ptr!(unsafe {
         for (neuron_id, neuron) in (*network).neurons.iter() {
             let mut fired = false;
 
@@ -100,7 +91,6 @@ pub extern "C" fn step(
                             });
                         }
                         state.voltage = state.reset_potential;
-
                         fired = true;
                     }
                 }
@@ -115,7 +105,6 @@ pub extern "C" fn step(
                             });
                         }
                         state.voltage = state.reset_potential;
-
                         fired = true;
                     }
                 }
@@ -131,7 +120,6 @@ pub extern "C" fn step(
                         }
                         state.voltage = state.reset_potential;
                         state.recovery_var = state.recovery_var + state.d_var;
-
                         fired = true;
                         // hmm.. well, we need to do the current additive stuff directly in here
                         // instead of globally.. so the question is how did izhikevich and co. do
@@ -216,7 +204,6 @@ pub extern "C" fn step(
         }
 
         (*runstate).timestamp += 1;
-    }
-
-    return runstate;
+        runstate
+    })
 }
