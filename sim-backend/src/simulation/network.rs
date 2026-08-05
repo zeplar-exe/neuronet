@@ -1,7 +1,7 @@
 use std::ffi::c_uchar;
 
 use rustc_hash::FxHashMap;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::models::NeuronModelKind;
 use crate::util::{ByteBuffer, NeuronBuffer, SynapseBuffer};
@@ -67,7 +67,10 @@ pub extern "C" fn serialize_network(network: *const Network, json: bool) -> Byte
             bincode::serialize(&*network).unwrap()
         };
         let mut bytes = std::mem::ManuallyDrop::new(bytes);
-        ByteBuffer { data: bytes.as_mut_ptr(), len: bytes.len() }
+        ByteBuffer {
+            data: bytes.as_mut_ptr(),
+            len: bytes.len(),
+        }
     }
 }
 
@@ -169,22 +172,19 @@ pub extern "C" fn add_izhikevich_neuron(network: *mut Network) -> NeuronId {
 #[no_mangle]
 pub extern "C" fn network_remove_neuron(network: *mut Network, id: NeuronId) {
     unsafe {
-        (*network).neurons.remove(&id);
-        (*network).synapses.retain(|_, e| e.target != id);
+        if let Some(_) = (*network).neurons.remove(&id) {
+            (*network).synapses.retain(|_, e| e.source != id && e.target != id);
+        }
     }
 }
 
 #[no_mangle]
 pub extern "C" fn network_remove_synapse(network: *mut Network, id: SynapseId) {
     unsafe {
-        let synapse = (*network).synapses.remove(&id);
-        if let Some(synapse) = synapse {
-            (*network)
-                .neurons
-                .get_mut(&synapse.source)
-                .unwrap()
-                .outgoing
-                .retain(|e| *e != id);
+        if let Some(synapse) = (*network).synapses.remove(&id) {
+            if let Some(source) = (*network).neurons.get_mut(&synapse.source) {
+                source.outgoing.retain(|e| *e != id);
+            }
         }
     }
 }

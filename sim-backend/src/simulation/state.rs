@@ -169,6 +169,15 @@ pub extern "C" fn runstate_remove_neuron(runstate: *mut Runstate, id: NeuronId) 
 }
 
 #[no_mangle]
+pub extern "C" fn clear_synapse_wheel(runstate: *mut Runstate) {
+    unsafe {
+        for bucket in (*runstate).synapse_wheel.iter_mut() {
+            bucket.clear();
+        }
+    }
+}
+
+#[no_mangle]
 pub extern "C" fn get_integrate_fire_state(runstate: &mut Runstate, id: NeuronId) -> &mut IntegrateFireState {
     runstate.integrate_fire.get_mut(&id).unwrap()
 }
