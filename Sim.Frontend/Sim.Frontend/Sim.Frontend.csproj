@@ -26,9 +26,13 @@
         </PackageReference>
         <PackageReference Include="bodong.Avalonia.PropertyGrid" Version="11.3.1.5" />
         <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+        <PackageReference Include="KdTree" Version="1.4.1" />
         <PackageReference Include="Newtonsoft.Json" Version="13.0.5-beta1" />
         <PackageReference Include="ReactiveUI" Version="24.0.0-beta.3" />
         <PackageReference Include="ReactiveUI.Avalonia" Version="11.3.0" />
         <PackageReference Include="ReactiveUI.Fody" Version="19.5.41" />
+    </ItemGroup>
+    <ItemGroup>
+        <None Include="../../sim-backend/target/release/libneuronet.dylib" CopyToOutputDirectory="PreserveNewest" Link="libneuronet.dylib" />
     </ItemGroup>
 </Project>

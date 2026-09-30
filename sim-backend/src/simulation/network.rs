@@ -189,7 +189,17 @@ pub extern "C" fn add_izhikevich_neuron(network: *mut Network) -> NeuronId {
 pub extern "C" fn network_remove_neuron(network: *mut Network, id: NeuronId) {
     ffi_catch_void!(unsafe {
         if let Some(_) = (*network).neurons.remove(&id) {
-            (*network).synapses.retain(|_, e| e.source != id && e.target != id);
+            (*network).synapses.retain(|_, e| {
+                if e.source == id {
+                    return false;
+                } else if e.target == id {
+                    if let Some(source) = (*network).neurons.get_mut(&e.source) {
+                        source.outgoing.retain(|e| *e != id);
+                    }
+                    return false;
+                }
+                return true;
+            });
         }
     })
 }

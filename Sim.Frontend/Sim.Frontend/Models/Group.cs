@@ -4,7 +4,7 @@ using Avalonia.Media;
 
 namespace Sim.Frontend.Models;
 
-public class Group : INode
+public class Group : ITreeNode
 {
     private static string[] Gods =
     [
@@ -60,7 +60,7 @@ public class Group : INode
     public string Name { get; set; }
     public Group? Parent { get; set; }
     public Color Color { get; set; }
-    public ObservableCollection<INode> Children { get; } = [];
+    public ObservableCollection<ITreeNode> Children { get; } = [];
 
     public Group()
     {

@@ -3,7 +3,7 @@ use std::ffi::c_uchar;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
-use crate::simulation::network::{Current, NeuronId, SynapseId, Time, Voltage};
+use crate::simulation::network::{Current, Network, NeuronId, SynapseId, Time, Voltage};
 use crate::util::ByteBuffer;
 
 pub const CONDUCTION_WHEEL_SIZE: usize = 5001;
@@ -208,4 +208,22 @@ pub extern "C" fn set_lif_state(runstate: *mut Runstate, neuron_id: NeuronId, st
 #[no_mangle]
 pub extern "C" fn set_izhikevich_state(runstate: *mut Runstate, neuron_id: NeuronId, state: IzhikevichState) {
     ffi_catch_void!(unsafe { (*runstate).izhikevich.insert(neuron_id, state) })
+}
+
+// expect
+#[no_mangle]
+pub extern "C" fn get_global_state(
+    runstate: *mut Runstate,
+    subscrubed: *const StateSubscription,
+    out_neuron_ids: *mut NeuronId,
+    out_voltages: *mut Voltage,
+    out_refractory: *mut Time, // current refractory progress per neuron
+    out_synapse_ids: *mut SynapseId,
+    out_conductances: *mut Time, // current conductance progress per neuron
+) -> usize // returns count actually written
+{
+    // write only subscribed/changed entries into caller-provided buffers
+    // return how many were written
+    //
+    // GCHandle.Alloc(buffer, GCHandleType.Pinned) for each buffer
 }

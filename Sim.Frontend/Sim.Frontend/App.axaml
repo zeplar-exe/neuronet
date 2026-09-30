@@ -11,5 +11,10 @@
   
     <Application.Styles>
         <FluentTheme />
+        
+        <Style Selector="TreeViewItem:not(:selected) /template/ Border#PART_LayoutRoot:pointerover">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
     </Application.Styles>
+
 </Application>

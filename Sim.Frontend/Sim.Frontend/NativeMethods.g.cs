@@ -57,9 +57,6 @@ namespace CsBindgen
         [DllImport(__DllName, EntryPoint = "set_voltage", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void set_voltage(Network* network, Runstate* runstate, uint id, double voltage);
 
-        [DllImport(__DllName, EntryPoint = "runstate_remove_neuron", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-        internal static extern void runstate_remove_neuron(Network* network, Runstate* runstate, uint id);
-
         [DllImport(__DllName, EntryPoint = "set_current_stimulus", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void set_current_stimulus(StimulusContainer* stimuli, uint neuron_id, double current);
 
@@ -73,10 +70,10 @@ namespace CsBindgen
         internal static extern void destroy_network(Network* network);
 
         [DllImport(__DllName, EntryPoint = "serialize_network", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-        internal static extern ByteBuffer serialize_network(Network* network);
+        internal static extern ByteBuffer serialize_network(Network* network, [MarshalAs(UnmanagedType.U1)] bool json);
 
         [DllImport(__DllName, EntryPoint = "deserialize_network", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-        internal static extern Network* deserialize_network(byte* data, nuint length);
+        internal static extern Network* deserialize_network(byte* data, nuint length, [MarshalAs(UnmanagedType.U1)] bool json);
 
         [DllImport(__DllName, EntryPoint = "get_neurons", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern NeuronBuffer get_neurons(Network* network);
@@ -85,16 +82,16 @@ namespace CsBindgen
         internal static extern SynapseBuffer get_synapses(Network* network);
 
         [DllImport(__DllName, EntryPoint = "add_synapse", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-        internal static extern uint add_synapse(Network* network, uint source, uint target, double strength, uint conduction_time);
+        internal static extern uint add_synapse(Network* network, uint source, uint target);
 
         [DllImport(__DllName, EntryPoint = "add_integrate_fire_neuron", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-        internal static extern uint add_integrate_fire_neuron(Network* network, uint refractory_period);
+        internal static extern uint add_integrate_fire_neuron(Network* network);
 
         [DllImport(__DllName, EntryPoint = "add_lif_neuron", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-        internal static extern uint add_lif_neuron(Network* network, uint refractory_period);
+        internal static extern uint add_lif_neuron(Network* network);
 
         [DllImport(__DllName, EntryPoint = "add_izhikevich_neuron", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-        internal static extern uint add_izhikevich_neuron(Network* network, uint refractory_period);
+        internal static extern uint add_izhikevich_neuron(Network* network);
 
         [DllImport(__DllName, EntryPoint = "network_remove_neuron", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void network_remove_neuron(Network* network, uint id);
@@ -113,14 +110,11 @@ namespace CsBindgen
         [return: MarshalAs(UnmanagedType.U1)]
         internal static extern bool network_has_synapse(Network* network, uint id);
 
-        [DllImport(__DllName, EntryPoint = "set_neuron_refractory_period", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-        internal static extern void set_neuron_refractory_period(Network* network, uint id, uint refractory_period);
+        [DllImport(__DllName, EntryPoint = "serialize_runstate", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern ByteBuffer serialize_runstate(Runstate* runstate, [MarshalAs(UnmanagedType.U1)] bool json);
 
-        [DllImport(__DllName, EntryPoint = "set_synapse_strength", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-        internal static extern void set_synapse_strength(Network* network, uint id, double strength);
-
-        [DllImport(__DllName, EntryPoint = "set_synapse_conduction_time", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-        internal static extern void set_synapse_conduction_time(Network* network, uint id, uint conduction_time);
+        [DllImport(__DllName, EntryPoint = "deserialize_runstate", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern Runstate* deserialize_runstate(byte* data, nuint length, [MarshalAs(UnmanagedType.U1)] bool json);
 
         [DllImport(__DllName, EntryPoint = "create_runstate", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern Runstate* create_runstate();
@@ -131,6 +125,30 @@ namespace CsBindgen
         [DllImport(__DllName, EntryPoint = "destroy_runstate", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void destroy_runstate(Runstate* runstate);
 
+        [DllImport(__DllName, EntryPoint = "set_neuron_refractory_period", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void set_neuron_refractory_period(Runstate* runstate, uint id, uint refractory_period);
+
+        [DllImport(__DllName, EntryPoint = "set_synapse_strength", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void set_synapse_strength(Runstate* runstate, uint id, double strength);
+
+        [DllImport(__DllName, EntryPoint = "set_synapse_conduction_time", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void set_synapse_conduction_time(Runstate* runstate, uint id, uint conduction_time);
+
+        [DllImport(__DllName, EntryPoint = "runstate_remove_neuron", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void runstate_remove_neuron(Runstate* runstate, uint id);
+
+        [DllImport(__DllName, EntryPoint = "clear_synapse_wheel", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern void clear_synapse_wheel(Runstate* runstate);
+
+        [DllImport(__DllName, EntryPoint = "get_integrate_fire_state", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern IntegrateFireState* get_integrate_fire_state(Runstate* runstate, uint id);
+
+        [DllImport(__DllName, EntryPoint = "get_lif_state", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern LifState* get_lif_state(Runstate* runstate, uint id);
+
+        [DllImport(__DllName, EntryPoint = "get_izhikevich_state", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern IzhikevichState* get_izhikevich_state(Runstate* runstate, uint id);
+
         [DllImport(__DllName, EntryPoint = "set_integrate_fire_state", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void set_integrate_fire_state(Runstate* runstate, uint neuron_id, IntegrateFireState state);
 
@@ -140,17 +158,8 @@ namespace CsBindgen
         [DllImport(__DllName, EntryPoint = "set_izhikevich_state", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void set_izhikevich_state(Runstate* runstate, uint neuron_id, IzhikevichState state);
 
-        [DllImport(__DllName, EntryPoint = "set_default_integrate_fire_state", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-        internal static extern void set_default_integrate_fire_state(Runstate* runstate, IntegrateFireState state);
-
-        [DllImport(__DllName, EntryPoint = "set_default_lif_state", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-        internal static extern void set_default_lif_state(Runstate* runstate, LifState state);
-
-        [DllImport(__DllName, EntryPoint = "set_default_izhikevich_state", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-        internal static extern void set_default_izhikevich_state(Runstate* runstate, IzhikevichState state);
-
-        [DllImport(__DllName, EntryPoint = "fill_defaults", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
-        internal static extern void fill_defaults(Network* network, Runstate* runstate);
+        [DllImport(__DllName, EntryPoint = "get_global_state", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern nuint get_global_state(Runstate* runstate, StateSubscription* subscrubed, uint* out_neuron_ids, double* out_voltages, uint* out_refractory, uint* out_synapse_ids, uint* out_conductances);
 
 
     }
@@ -216,10 +225,10 @@ namespace CsBindgen
     internal unsafe partial struct LifState
     {
         public double voltage;
-        public double resting_potential;
         public double reset_potential;
         public double threshold;
-        public double leak_constant;
+        public double leak_rate;
+        public double input_gain;
     }
 
     [StructLayout(LayoutKind.Sequential)]

@@ -2,9 +2,11 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using Avalonia;
+using Avalonia.Collections;
 using Avalonia.Controls.ApplicationLifetimes;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CsBindgen;
 using Sim.Frontend.Models;
 using Sim.Frontend.Views;
 
@@ -40,8 +42,8 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     public Workspace Workspace { get; }
-    public ObservableCollection<INode> Nodes { get; } = [];
-    public ObservableCollection<Edge> Edges { get; } = [];
+    public ObservableCollection<ITreeNode> Nodes { get; } = [];
+    public AvaloniaDictionary<uint, Edge> Edges { get; } = [];
     public ObservableCollection<Node> Selected { get; } = [];
     
     public bool BuildViewOpen => CurrentView == BuildView;
@@ -50,14 +52,20 @@ public partial class MainWindowViewModel : ViewModelBase
 
     public MainWindowViewModel()
     {
-        Workspace = new Workspace("Workspace", "./");
-        Nodes = Workspace.Nodes;
-        Edges = Workspace.Edges;
-        Nodes.Add(new Node());
-        Nodes.Add(new Node());
-        Nodes.Add(new Node());
-        Nodes.Add(new Node());
-        
+        Workspace = Workspace.Create("Workspace");
+        Nodes = Workspace.TreeNodes;
+        Edges = Workspace.EdgeMap;
+
+        var n1 = Workspace.AddNode(NeuronModelKind.IntegrateFire, 50, 50);
+        var n2 = Workspace.AddNode(NeuronModelKind.IntegrateFire, 150, 150);
+        var n3 = Workspace.AddNode(NeuronModelKind.IntegrateFire, 150, 50);
+        var n4 = Workspace.AddNode(NeuronModelKind.IntegrateFire, 50, 150);
+        Workspace.AddEdge(n1, n2);
+        Workspace.AddEdge(n2, n3);
+        Workspace.AddEdge(n2, n4);
+        Workspace.AddEdge(n3, n1);
+        Workspace.AddEdge(n4, n1);
+
         BuildView = new BuildView(Workspace, Selected);
         ExecuteView = new ExecuteView(Workspace, Selected);
         AnalyzeView = new AnalyzeView(Workspace, Selected);

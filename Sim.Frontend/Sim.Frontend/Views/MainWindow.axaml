@@ -38,47 +38,38 @@
             </MenuItem>
         </Menu>
         
-        <DockPanel DockPanel.Dock="Bottom">
-            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" HorizontalAlignment="Stretch">
-                <ContentControl Content="{Binding CurrentView.ToolbarPanel}"></ContentControl>
-            </StackPanel>
-            <Border DockPanel.Dock="Left" BorderThickness="0,0,1,0" BorderBrush="Red">
-                <StackPanel>
-                    <TextBlock>Explorer</TextBlock>
-                    <Separator/>
-                    <TreeView ItemsSource="{Binding Nodes}">
-                        <TreeView.DataTemplates>
-                            <TreeDataTemplate DataType="models:Group" ItemsSource="{Binding Children}">
-                                <StackPanel Orientation="Horizontal" 
-                                            ContextMenu="{Binding ViewModel.CurrentView.ExplorerContextMenu,
-                                            RelativeSource={RelativeSource AncestorType=views:MainWindow}}">
-                                    <TextBlock Text="{Binding Name}"></TextBlock>
-                                </StackPanel>
-                            </TreeDataTemplate>
-                            
-                            <TreeDataTemplate DataType="models:Node">
-                                <StackPanel Orientation="Horizontal" 
-                                            ContextMenu="{Binding ViewModel.CurrentView.ExplorerContextMenu,
-                                            RelativeSource={RelativeSource AncestorType=views:MainWindow}}">
-                                    <TextBlock Text="{Binding Name}"></TextBlock>
-                                </StackPanel>
-                            </TreeDataTemplate>
-                        </TreeView.DataTemplates>
-                    </TreeView>
-                </StackPanel>
-            </Border>
-            <ContentControl DockPanel.Dock="Right">
-                <Border BorderThickness="1,0,0,0" BorderBrush="Red">
-                    <StackPanel>
-                        <TextBlock>Properties</TextBlock>
-                        <Separator/>
-                        <ContentControl Content="{Binding CurrentView.PropertiesPanel}"></ContentControl>
-                    </StackPanel>
-                </Border>
-            </ContentControl>
-            <DockPanel>
-                <TabControl DockPanel.Dock="Top" 
-                            SelectedItem="{Binding SelectedViewTab}" 
+        <Grid DockPanel.Dock="Bottom" ColumnDefinitions="0.2*,Auto,0.6*,Auto,0.2*">
+            <Grid Grid.Column="0" RowDefinitions="Auto,Auto,Auto,*" MinWidth="80">
+                <ContentControl Grid.Row="0" Content="{Binding CurrentView.ToolbarPanel}"/>
+                <Separator Grid.Row="1"/>
+                <TextBlock Grid.Row="2">Explorer</TextBlock>
+                <TreeView Grid.Row="3" ItemsSource="{Binding Nodes}"
+                         ScrollViewer.AllowAutoHide="False">
+                    <TreeView.DataTemplates>
+                        <TreeDataTemplate DataType="models:Group" ItemsSource="{Binding Children}">
+                            <StackPanel Orientation="Horizontal"
+                                        ContextMenu="{Binding ViewModel.CurrentView.ExplorerContextMenu,
+                                        RelativeSource={RelativeSource AncestorType=views:MainWindow}}">
+                                <TextBlock Text="{Binding Name}"></TextBlock>
+                            </StackPanel>
+                        </TreeDataTemplate>
+
+                        <TreeDataTemplate DataType="models:Node">
+                            <StackPanel Orientation="Horizontal"
+                                        ContextMenu="{Binding ViewModel.CurrentView.ExplorerContextMenu,
+                                        RelativeSource={RelativeSource AncestorType=views:MainWindow}}">
+                                <TextBlock Text="{Binding Name}"></TextBlock>
+                            </StackPanel>
+                        </TreeDataTemplate>
+                    </TreeView.DataTemplates>
+                </TreeView>
+            </Grid>
+
+            <GridSplitter Grid.Column="1" Width="2" ResizeDirection="Columns" Background="Gray"/>
+
+            <DockPanel Grid.Column="2">
+                <TabControl DockPanel.Dock="Top"
+                            SelectedItem="{Binding SelectedViewTab}"
                             ItemsSource="{Binding ViewTabSource}">
                     <TabControl.ItemTemplate>
                         <DataTemplate>
@@ -89,7 +80,7 @@
                         <DataTemplate></DataTemplate>
                     </TabControl.ContentTemplate>
                 </TabControl>
-                <Panel>
+                <Panel HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="AntiqueWhite">
                     <ContentControl IsVisible="{Binding BuildViewOpen}"
                                     Content="{Binding BuildView}"></ContentControl>
                     <ContentControl IsVisible="{Binding ExecuteViewOpen}"
@@ -98,6 +89,14 @@
                                     Content="{Binding AnalyzeView}"></ContentControl>
                 </Panel>
             </DockPanel>
-        </DockPanel>
+
+            <GridSplitter Grid.Column="3" Width="2" ResizeDirection="Columns" Background="Gray"/>
+
+            <Grid Grid.Column="4" RowDefinitions="Auto,Auto,*" MinWidth="80">
+                <TextBlock Grid.Row="0">Properties</TextBlock>
+                <Separator Grid.Row="1"/>
+                <ContentControl Grid.Row="2" Content="{Binding CurrentView.PropertiesPanel}"/>
+            </Grid>
+        </Grid>
     </DockPanel>
 </Window>

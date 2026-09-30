@@ -1,10 +1,11 @@
 using System;
 using System.Collections.ObjectModel;
 using Avalonia;
+using CsBindgen;
 
 namespace Sim.Frontend.Models;
 
-public class Node : INode
+public class Node : ITreeNode
 {
     private static string[] GreekLetters =
     [
@@ -13,7 +14,7 @@ public class Node : INode
     ];
     
     public uint Id { get; set; }
-    public string Model { get; set; } = string.Empty;
+    internal NeuronModelKind Model { get; set; }
     public string Name { get; set; }
     public Group? Parent { get; set; }
     public double PositionX { get; set; }

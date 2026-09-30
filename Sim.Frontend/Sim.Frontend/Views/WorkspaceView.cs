@@ -3,7 +3,10 @@ using System.Collections.ObjectModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.GestureRecognizers;
+using Avalonia.Media;
 using Sim.Frontend.Models;
+using Sim.Frontend.ViewModels;
 
 namespace Sim.Frontend.Views;
 
@@ -36,11 +39,11 @@ public abstract partial class WorkspaceView : UserControl
         set => SetValue(ExplorerContextMenuProperty, value);
     }
 
-    public const double NodeRadius = 40;
+    public const double NodeRadius = 20;
     
-    public double PanX { get; set; }
-    public double PanY { get; set; }
-    public double Zoom { get; set; } = 1;
+    public abstract WorkspaceViewModel ViewModel { get; }
+    
+    public ITool? SelectedTool { get; set; }
     
     public Workspace Workspace { get; }
     public ObservableCollection<Node> Selected { get; }
@@ -55,24 +58,84 @@ public abstract partial class WorkspaceView : UserControl
         PointerMoved += OnPointerMoved;
         PointerEntered += OnPointerEntered;
         PointerExited += OnPointerExited;
+        
+        Background = Brushes.Transparent;
+        
+        GestureRecognizers.Add(new PinchGestureRecognizer());
+        GestureRecognizers.Add(new ScrollGestureRecognizer());
+        GestureRecognizers.Add(new PullGestureRecognizer());
+        
+        AddHandler(Gestures.PointerTouchPadGestureMagnifyEvent, (sender, args) =>
+        {
+            if (args.Delta.Y > 0)
+            {
+                ViewModel.ZoomIn();   
+            }
+            else if (args.Delta.Y < 0)
+            {
+                ViewModel.ZoomOut();
+            }
+            
+            InvalidateVisual();
+        });
+        PointerWheelChanged += (sender, args) =>
+        {
+            var d = args.Delta;
+            ViewModel.Pan(d.X, d.Y);
+            
+            InvalidateVisual();
+        };
+    }
+
+    public override void Render(DrawingContext context)
+    {
+        var center = new Point(ViewModel.PanX, ViewModel.PanY);
+        var centerOffset = center + new Vector(Bounds.Width / 2d, Bounds.Height / 2d);
+        
+        var nodePen = new Pen(Brushes.Black, 2);
+        var edgePen = new Pen(Brushes.Green, 2);
+        
+        foreach (var node in Workspace.GetAllNodes())
+        {
+            var brush = Brushes.CadetBlue;
+            if (Selected.Contains(node))
+                brush = Brushes.DarkBlue;
+            context.DrawEllipse(brush, nodePen, new Point(node.PositionX, node.PositionY) + centerOffset, NodeRadius, NodeRadius);
+        }
+
+        foreach (var edge in Workspace.EdgeMap.Values)
+        {
+            var p1 = new Point(edge.Source.PositionX, edge.Source.PositionY) + centerOffset;
+            var p2 = new Point(edge.Target.PositionX, edge.Target.PositionY) + centerOffset;
+            var dir = new Vector(p2.X - p1.X, p2.Y - p1.Y).Normalize();
+            p1 += dir * 5;
+            p2 -= dir * (NodeRadius + edgePen.Thickness);
+            context.DrawLine(edgePen, p1, p2);
+            
+            var rot = new Vector(-dir.Y, dir.X);
+            context.DrawLine(edgePen,
+                p2 + rot * (NodeRadius / 2),
+                p2 + rot * -(NodeRadius / 2));
+        }
     }
 
     private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        var pos = e.GetPosition(this) + new Point(PanX, PanY);
-        
-        if ("tool" == "true")
+        var pos = e.GetPosition(this) + new Point(ViewModel.PanX, ViewModel.PanY);
+
+        if (SelectedTool != null)
         {
+            SelectedTool.OnPointerPressed(pos, e);
             
+            return;
         }
         
-        // PERF: use a quadtree
-        foreach (var node in Workspace.GetAllNodes())
+        foreach (var kdn in Workspace.NodeKdTree.RadialSearch([pos.X, pos.Y], NodeRadius, 999))
         {
-            var nodePos = new Point(node.PositionX, node.PositionY);
-            var dist = Math.Sqrt(Math.Pow(pos.X - nodePos.X, 2) + Math.Pow(pos.Y - nodePos.Y, 2));
+            var node = kdn.Value;
+            var dist = new Vector(node.PositionX, node.PositionY).Length;
 
-            if (dist < NodeRadius * Zoom)
+            if (dist < NodeRadius * ViewModel.Zoom)
             {
                 if (!e.KeyModifiers.HasFlag(KeyModifiers.Control) && !e.KeyModifiers.HasFlag(KeyModifiers.Shift))
                 {
@@ -84,23 +147,27 @@ public abstract partial class WorkspaceView : UserControl
         }
     }
 
-    private void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
+    protected virtual void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
-        throw new System.NotImplementedException();
+        var pos = e.GetPosition(this) + new Point(ViewModel.PanX, ViewModel.PanY);
+
+        SelectedTool?.OnPointerReleased(pos, e);
     }
 
-    private void OnPointerMoved(object? sender, PointerEventArgs e)
+    protected virtual void OnPointerMoved(object? sender, PointerEventArgs e)
     {
-        throw new System.NotImplementedException();
+        var pos = e.GetPosition(this) + new Point(ViewModel.PanX, ViewModel.PanY);
+
+        SelectedTool?.OnPointerMoved(pos, e);
     }
 
-    private void OnPointerEntered(object? sender, PointerEventArgs e)
+    protected virtual void OnPointerEntered(object? sender, PointerEventArgs e)
     {
-        throw new System.NotImplementedException();
+        
     }
 
-    private void OnPointerExited(object? sender, PointerEventArgs e)
+    protected virtual void OnPointerExited(object? sender, PointerEventArgs e)
     {
-        throw new System.NotImplementedException();
+        
     }
 }

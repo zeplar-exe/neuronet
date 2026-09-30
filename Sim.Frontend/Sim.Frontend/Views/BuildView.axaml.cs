@@ -1,118 +1,212 @@
-using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Reflection;
 using Avalonia;
-using Avalonia.Controls;
 using Avalonia.Input;
-using Avalonia.Markup.Xaml;
-using Avalonia.Media;
-using Avalonia.Remote.Protocol.Input;
 using CsBindgen;
 using ReactiveUI;
 using Sim.Frontend.Models;
+using Sim.Frontend.ViewModels;
 
 namespace Sim.Frontend.Views;
 
+// fix click positions
+// add Create Neuron Population
+    // this one is allowed to have a lot of parameters (advanced pullout), like how to instantiate everything and positioning
+// need Ctrl/Shift modifiers for edge creation
+// need groups and Cmd/Ctrl+G on selected
+// need functioning context menu in explorer and on-canvas
+    // group (with hotkey)
+    // delete (with hotkey)
+    // select all (with hotkey)
+// need runstate storage and retrieval
+// need stimuli placement in execute view; they look like normal neurons but only have outgoing connections
+// need manual ticking and play/pause execution
+    // need lighting up of neurons, synapses (if possible) as current flows
+// for later: either in-app sandboxed Python scripts or out-of-app scripts that push through a socket
+
 public partial class BuildView : WorkspaceView
 {
-    public bool CreateNodeToolSelected { get; set; }
-    public bool ConnectNodeToolSelected { get; set; }
-    public bool DeleteNodeToolSelected { get; set; }
-    
-    public int LevelOfDetail { get; set; }
+    public BuildViewViewModel BuildViewModel => (BuildViewViewModel)DataContext!;
+    public override WorkspaceViewModel ViewModel => BuildViewModel;
     
     public BuildView(Workspace workspace, ObservableCollection<Node> selected) : base(workspace, selected)
     {
         InitializeComponent();
-    }
 
-    protected override void OnMeasureInvalidated()
-    {
-        base.OnMeasureInvalidated();
-        
-        // there can be items in the explorer that aren't visible in the workspace
-            // items in the explorer that aren't visible in the workspace are grabbed, can be panned to
-        // in general, on panning/zooming (handled in base class), have to invalidate *slowly*
-        
-    }
+        DataContext = new BuildViewViewModel();
+        ToolbarRoot.DataContext = BuildViewModel;
 
-    public override void Render(DrawingContext context)
-    {
-        base.Render(context);
-        
-        var nodePen = new Pen(Brushes.Black, 2);
-        var edgePen = new Pen(Brushes.Green, 2);
-        
-        foreach (var node in Workspace.GetAllNodes())
+        BuildViewModel.PropertyChanged += (sender, args) =>
         {
-            context.DrawEllipse(Brushes.CadetBlue, nodePen, new Point(node.PositionX, node.PositionY), NodeRadius, NodeRadius);
+            if (args.PropertyName == nameof(BuildViewModel.CurrentTool))
+            {
+                SelectedTool = BuildViewModel.CurrentTool switch
+                {
+                    BuildTool.Select => new SelectTool(Workspace, this),
+                    BuildTool.CreateNode => new CreateNodeTool(Workspace, this),
+                    BuildTool.DeleteNode => new DeleteNodeTool(Workspace, this),
+                    _ => null
+                };
+            }
+        };
+
+        BuildViewModel.SetTool(BuildTool.Select);
+    }
+
+    public class SelectTool : ReactiveObject, ITool
+    {
+        private const double DragThreshold = 4.0; // px
+
+        private Workspace Workspace { get; }
+        private BuildView View { get; }
+        private Point PressPosition { get; set; }
+        private Node? HitNode { get; set; }
+        private bool IsDragging { get; set; }
+        private bool ShiftHeld { get; set; }
+
+        public SelectTool(Workspace workspace, BuildView view)
+        {
+            Workspace = workspace;
+            View = view;
         }
 
-        if (LevelOfDetail < 2)
+        public void OnPointerPressed(Point position, PointerPressedEventArgs e)
         {
-            foreach (var edge in Workspace.Edges)
+            PressPosition = position;
+            IsDragging = false;
+            ShiftHeld = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+
+            var nodes = Workspace.NodeKdTree.RadialSearch([position.X, position.Y], NodeRadius, 1);
+            HitNode = nodes is { Length: > 0 } ? nodes[0].Value : null;
+        }
+
+        public void OnPointerReleased(Point position, PointerReleasedEventArgs e)
+        {
+            if (!IsDragging)
             {
-                context.DrawLine(edgePen,
-                    new Point(edge.Source.PositionX, edge.Source.PositionY),
-                    new Point(edge.Target.PositionX, edge.Target.PositionY));
-                var vector = new Vector(edge.Target.PositionX - edge.Source.PositionX,
-                    edge.Target.PositionY - edge.Source.PositionY);
-                context.DrawLine(edgePen,
-                    new Point(edge.Target.PositionX, edge.Target.PositionY),
-                    new Point(edge.Target.PositionX + vector.X / 2, edge.Target.PositionY + vector.Y / 2));
+                if (HitNode == null)
+                {
+                    View.Selected.Clear();
+                }
+                else if (ShiftHeld)
+                {
+                    if (View.Selected.Contains(HitNode))
+                        View.Selected.Remove(HitNode);
+                    else
+                        View.Selected.Add(HitNode);
+                }
+                else
+                {
+                    View.Selected.Clear();
+                    View.Selected.Add(HitNode);
+                }
+                View.InvalidateVisual();
             }
+
+            HitNode = null;
+            IsDragging = false;
+        }
+
+        public void OnPointerMoved(Point position, PointerEventArgs e)
+        {
+            if (HitNode == null) return;
+
+            var d = position - PressPosition;
+            var delta = new Vector(d.X, d.Y);
+
+            if (!IsDragging)
+            {
+                if (delta.Length < DragThreshold) return;
+                IsDragging = true;
+
+                if (ShiftHeld)
+                {
+                    if (!View.Selected.Contains(HitNode))
+                        View.Selected.Add(HitNode);
+                }
+                else if (!View.Selected.Contains(HitNode))
+                {
+                    View.Selected.Clear();
+                    View.Selected.Add(HitNode);
+                }
+            }
+
+            if (ShiftHeld && View.Selected.Count > 0)
+            {
+                var moveDelta = position - PressPosition;
+                foreach (var node in View.Selected)
+                    Workspace.MoveNode(node, node.PositionX + moveDelta.X, node.PositionY + moveDelta.Y);
+                PressPosition = position;
+            }
+            else
+            {
+                Workspace.MoveNode(HitNode, position.X, position.Y);
+            }
+
+            View.InvalidateVisual();
         }
     }
 
     public class CreateNodeTool : ReactiveObject, ITool
     {
         private Workspace Workspace { get; }
-        
+        private BuildView View { get; }
+
         [Display(Name = "Model")]
         internal NeuronModelKind Model { get; set; }
     
         [Display(Name = "Refractory Period")]
-        [Range(0, 10000)]
+        [Range(0, 5000)]
         public uint RefractoryPeriod { get; set; }
 
-        public CreateNodeTool(Workspace workspace)
+        public CreateNodeTool(Workspace workspace, BuildView view)
         {
             Workspace = workspace;
+            View = view;
         }
 
         public void OnPointerPressed(Point position, PointerPressedEventArgs e)
         {
-            uint id;
+            Workspace.AddNode(Model, position.X, position.Y);
+            View.InvalidateVisual();
+        }
 
-            unsafe
+        public void OnPointerReleased(Point position, PointerReleasedEventArgs e)
+        {
+            
+        }
+
+        public void OnPointerMoved(Point position, PointerEventArgs e)
+        {
+            
+        }
+    }
+    
+    public class DeleteNodeTool : ReactiveObject, ITool
+    {
+        private Workspace Workspace { get; }
+        private BuildView View { get; }
+
+        public DeleteNodeTool(Workspace workspace, BuildView view)
+        {
+            Workspace = workspace;
+            View = view;
+        }
+
+        public void OnPointerPressed(Point position, PointerPressedEventArgs e)
+        {
+            var nodes = Workspace.NodeKdTree.RadialSearch([position.X, position.Y], NodeRadius, 1);
+
+            if (nodes == null || nodes.Length == 0)
             {
-                switch (Model)
-                {
-                    case NeuronModelKind.IntegrateFire:
-                        id = NativeMethods.add_integrate_fire_neuron(Workspace.Network, RefractoryPeriod);
-                        break;
-                    case NeuronModelKind.LIF:
-                        id = NativeMethods.add_lif_neuron(Workspace.Network, RefractoryPeriod);
-                        break;
-                    case NeuronModelKind.Izhikevich:
-                        id = NativeMethods.add_izhikevich_neuron(Workspace.Network, RefractoryPeriod);
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
+                View.Selected.Clear();
+                return;
             }
 
-            var node = new Node
-            {
-                Id = id,
-                Model = "model",
-                PositionX = position.X,
-                PositionY = position.Y
-            };
+            var node = nodes[0].Value;
             
-            Workspace.Nodes.Add(node);
+            Workspace.RemoveNode(node);
+            View.InvalidateVisual();
         }
 
         public void OnPointerReleased(Point position, PointerReleasedEventArgs e)

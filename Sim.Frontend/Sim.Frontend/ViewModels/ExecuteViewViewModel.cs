@@ -5,7 +5,7 @@ using CsBindgen;
 
 namespace Sim.Frontend.ViewModels;
 
-public unsafe partial class ExecuteViewViewModel : ViewModelBase
+public unsafe partial class ExecuteViewViewModel : WorkspaceViewModel
 {
     internal Runstate* BaseRunstate { get; set; }
     internal Runstate* CurrentRunstate { get; set; }

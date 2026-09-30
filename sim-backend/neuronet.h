@@ -155,6 +155,8 @@ void set_synapse_conduction_time(struct Runstate *runstate, SynapseId id, Time c
 
 void runstate_remove_neuron(struct Runstate *runstate, NeuronId id);
 
+void clear_synapse_wheel(struct Runstate *runstate);
+
 struct IntegrateFireState *get_integrate_fire_state(struct Runstate *runstate, NeuronId id);
 
 struct LifState *get_lif_state(struct Runstate *runstate, NeuronId id);
@@ -170,6 +172,14 @@ void set_lif_state(struct Runstate *runstate, NeuronId neuron_id, struct LifStat
 void set_izhikevich_state(struct Runstate *runstate,
                           NeuronId neuron_id,
                           struct IzhikevichState state);
+
+uintptr_t get_global_state(struct Runstate *runstate,
+                           const StateSubscription *subscrubed,
+                           NeuronId *out_neuron_ids,
+                           Voltage *out_voltages,
+                           Time *out_refractory,
+                           SynapseId *out_synapse_ids,
+                           Time *out_conductances);
 
 void destroy_byte_buffer(struct ByteBuffer buffer);
 
